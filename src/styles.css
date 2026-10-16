@@ -1,0 +1,1675 @@
+:root {
+  --titlebar-inset: 0px;
+
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-app);
+}
+
+/* Hauteur de la barre de titre dessinée par l'app (voir TitleBar.tsx). */
+:root[data-os="windows"] {
+  --titlebar-inset: 32px;
+}
+
+/* macOS : titleBarStyle "Overlay" -> on laisse la place aux feux tricolores. */
+:root[data-os="macos"] {
+  --titlebar-inset: 28px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button {
+  /* Pas de padding par défaut du navigateur : il décentrait les icônes des
+     petits boutons carrés. Chaque bouton définit le sien si besoin. */
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* Barre de titre : transparente, donc de la couleur du fond de l'app */
+.titlebar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 10;
+  display: flex;
+  align-items: stretch;
+  height: var(--titlebar-inset);
+  user-select: none;
+}
+
+.window-controls {
+  display: flex;
+  margin-left: auto;
+}
+
+/* Logo + menus (Windows) */
+.app-menubar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.app-logo {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+.menubar {
+  display: flex;
+  align-items: center;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu-trigger {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text-tree);
+}
+
+.menu-trigger:hover,
+.menu-trigger.open {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--border-line);
+  border-radius: 8px;
+  background: var(--bg-explorer);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text);
+}
+
+.menu-item:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.menu-item:disabled {
+  color: var(--text-label);
+  cursor: default;
+}
+
+.menu-shortcut {
+  color: var(--text-label);
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-line);
+}
+
+.window-controls button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: var(--titlebar-inset);
+  color: var(--text);
+}
+
+.window-controls button:hover {
+  background: var(--bg-hover);
+}
+
+.window-controls button.close:hover {
+  color: #fff;
+  background: #c42b1c; /* rouge de fermeture Windows 11 */
+}
+
+.window-controls svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+}
+
+.crash {
+  height: 100%;
+  overflow: auto;
+  padding: 24px;
+}
+
+.crash pre {
+  white-space: pre-wrap;
+  color: var(--error);
+}
+
+.primary {
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 500;
+}
+
+.layout {
+  height: 100%;
+  /* Barre d'activité | explorateur (repliable) | éditeur | Claude */
+  display: flex;
+  gap: var(--gap);
+  padding: var(--gap);
+  /* Les fenêtres commencent juste sous la barre de titre */
+  padding-top: var(--titlebar-inset);
+}
+
+/* Fenêtre : bloc arrondi posé sur le fond général */
+.window {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-window);
+  border-radius: var(--radius);
+  background: var(--bg-window);
+}
+
+/* Barre d'activité : icônes seules, ou icônes + libellés une fois dépliée.
+   En flex, les fenêtres de droite se resserrent d'autant. */
+.activity-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  width: 32px;
+  overflow: hidden;
+  transition: width 0.15s ease;
+}
+
+.activity-bar.expanded {
+  width: 160px;
+}
+
+.activity-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  /* (32px - icône 18px) / 2 : l'icône reste centrée quand la barre est réduite */
+  padding: 0 7px;
+  border-radius: 8px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.activity-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+/* Pas de fond : seule la couleur change au survol et sur la vue active */
+.activity-item:hover {
+  color: var(--text);
+}
+
+.activity-item.active {
+  color: var(--primary);
+}
+
+.activity-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.activity-bar.expanded .activity-label {
+  opacity: 1;
+}
+
+/* Bouton déplier / réduire, en bas de la barre */
+.activity-toggle {
+  margin-top: auto;
+}
+
+/* Largeurs réglées par les poignées (flex-basis en style inline). Les
+   fenêtres latérales peuvent rétrécir jusqu'à leur minimum si la fenêtre
+   de l'app devient trop étroite ; la fenêtre code prend le reste. */
+.sidebar {
+  flex: 0 1 240px;
+  min-width: 170px;
+  background: var(--bg-explorer);
+}
+
+/* Colonne centrale : fenêtre code au-dessus, terminal en dessous */
+.center-column {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 300px;
+  min-height: 0;
+}
+
+.main {
+  flex: 1;
+  min-height: 120px;
+  background: var(--bg-editor);
+}
+
+.terminal-panel {
+  flex: 0 1 300px;
+  min-height: 90px;
+  background: var(--bg-terminal);
+}
+
+.terminal-host {
+  flex: 1;
+  min-height: 0;
+  padding: 0 4px 6px 14px;
+}
+
+/* xterm prend la couleur de la fenêtre (son propre fond est appliqué au canvas) */
+.terminal-host .xterm,
+.terminal-host .xterm-viewport {
+  height: 100%;
+  background: transparent !important;
+}
+
+.claude-panel {
+  flex: 0 1 380px;
+  min-width: 280px;
+  background: var(--bg-explorer);
+}
+
+/* Poignée de redimensionnement : occupe exactement l'espace entre deux fenêtres */
+.resize-handle {
+  position: relative;
+  flex: 0 0 var(--gap);
+  outline: none;
+  touch-action: none;
+}
+
+.resize-handle.vertical {
+  margin: 0 calc(-1 * var(--gap));
+  cursor: col-resize;
+}
+
+.resize-handle.horizontal {
+  margin: calc(-1 * var(--gap)) 0;
+  cursor: row-resize;
+}
+
+/* Trait fin visible au survol, au focus clavier et pendant le glissement */
+.resize-handle::after {
+  content: "";
+  position: absolute;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.resize-handle.vertical::after {
+  inset: var(--radius) calc(50% - 1px);
+}
+
+.resize-handle.horizontal::after {
+  inset: calc(50% - 1px) var(--radius);
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after {
+  background: var(--border-strong);
+}
+
+.resize-handle:active::after {
+  background: var(--primary);
+}
+
+/* Pendant un glissement : curseur stable et pas de sélection de texte */
+body.resizing-col,
+body.resizing-row {
+  user-select: none;
+}
+
+body.resizing-col {
+  cursor: col-resize;
+}
+
+body.resizing-row {
+  cursor: row-resize;
+}
+
+/* En-têtes de fenêtre : titre en majuscules espacées, actions à droite */
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 12px 0 16px;
+  user-select: none;
+}
+
+.panel-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+/* Icône cliquable collée à un titre de fenêtre : même couleur et même hauteur que le titre */
+.title-icon-button {
+  display: grid;
+  place-items: center;
+  color: var(--text-label);
+}
+
+/* Poussée tout à droite de l'en-tête */
+.title-icon-button.end {
+  margin-left: auto;
+}
+
+.title-icon-button:hover {
+  color: var(--text);
+}
+
+.title-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  border-radius: 4px;
+  color: var(--text-dim);
+}
+
+.icon-button-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.icon-button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.error-bar {
+  padding: 6px 12px;
+  color: var(--error);
+}
+
+/* Explorateur */
+.sidebar {
+  /* Retrait : marge gauche de base + décalage par niveau */
+  --tree-indent-base: 10px;
+  --tree-indent-step: 14px;
+}
+
+.panel-placeholder {
+  margin: 0;
+  padding: 0 16px;
+  color: var(--text-label);
+}
+
+.sidebar-placeholder {
+  margin: 0;
+  padding: 0 16px;
+  color: var(--text-dim);
+}
+
+.file-tree {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  padding-right: 8px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-explorer);
+}
+
+.tree-item:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.tree-item.active {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+/* Flèche des dossiers : petite et discrète, pivote à l'ouverture */
+.tree-arrow {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-right: -2px;
+  color: var(--text-dim);
+  transition: transform 0.1s ease;
+}
+
+.tree-arrow.open {
+  transform: rotate(90deg);
+}
+
+.file-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  /* Les logos remplissent tout leur carré : on les réduit pour qu'ils
+     paraissent de la même taille que les icônes Material, qui ont une marge interne. */
+  padding: 1.5px;
+}
+
+.folder-icon,
+.generic-file-icon {
+  padding: 0;
+  color: var(--primary);
+}
+
+.tree-error {
+  padding: 4px 16px;
+  color: var(--error);
+}
+
+/* Fenêtre modale (préférences) */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.6);
+}
+
+.modal {
+  display: flex;
+  width: min(760px, calc(100vw - 48px));
+  height: min(520px, calc(100vh - 80px));
+  overflow: hidden;
+  border: 1px solid var(--border-line);
+  border-radius: 12px;
+  background: var(--bg-explorer);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.6);
+  outline: none;
+}
+
+.preferences-nav {
+  display: flex;
+  flex: 0 0 200px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  background: var(--bg-editor);
+  border-right: 1px solid var(--border-line);
+}
+
+.preferences-nav-title {
+  padding: 6px 10px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+.preferences-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text-tree);
+}
+
+.preferences-nav-item:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.preferences-nav-item.active {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.preferences-nav-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.preferences-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.preferences-header {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 16px 0 24px;
+  border-bottom: 1px solid var(--border-line);
+}
+
+.preferences-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.preferences-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 24px;
+  overflow: auto;
+}
+
+.setting-label {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.setting-description {
+  margin-top: 2px;
+  color: var(--text-label);
+}
+
+.setting-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.setting-check input {
+  accent-color: var(--primary);
+}
+
+.setting-input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-elevated);
+  outline: none;
+}
+
+.setting-input:focus {
+  border-color: var(--primary);
+}
+
+.setting-input:disabled {
+  opacity: 0.5;
+}
+
+/* Choix du thème : une carte avec miniature par thème */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  text-align: left;
+}
+
+.theme-card:hover {
+  background: var(--bg-hover);
+}
+
+.theme-card.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.theme-preview {
+  display: flex;
+  gap: 4px;
+  height: 72px;
+  padding: 6px;
+  border-radius: 6px;
+}
+
+.theme-preview-window {
+  flex: 0 0 30%;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+
+.theme-preview-editor {
+  position: relative;
+  flex: 1;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+.theme-preview-accent {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 40%;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.theme-name {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+/* Onglets des fichiers ouverts */
+.tab-bar {
+  display: flex;
+  flex-shrink: 0;
+  height: 36px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--bg-editor-header);
+  /* Ligne de séparation dessinée en ombre : les onglets gardent toute la
+     hauteur et l'onglet actif la recouvre. */
+  box-shadow: inset 0 -1px 0 var(--border-line);
+  scrollbar-width: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 220px;
+  padding: 0 6px 0 12px;
+  color: var(--text-tree);
+  border-right: 1px solid var(--border-line);
+  /* Toujours présente pour que le contenu ne bouge pas à l'activation */
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+/* L'onglet actif prend le fond de l'éditeur et recouvre la ligne du dessous */
+.tab.active {
+  color: var(--text-strong);
+  background: var(--bg-editor);
+  border-bottom-color: var(--primary);
+}
+
+.tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  /* Visible au survol et sur l'onglet actif, sinon la place reste réservée */
+  visibility: hidden;
+}
+
+.tab:hover .tab-close,
+.tab.active .tab-close {
+  visibility: visible;
+}
+
+.tab-close:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.tab-close-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Modifications non enregistrées : un point remplace la croix, sauf au survol */
+.tab.dirty .tab-close {
+  visibility: visible;
+}
+
+.tab.dirty:not(:hover) .tab-close-icon {
+  display: none;
+}
+
+.tab.dirty:not(:hover) .tab-close::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Fil d'Ariane du fichier actif, sous les onglets */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 0 14px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-label);
+  border-bottom: 1px solid var(--border-line);
+}
+
+.crumb {
+  display: flex;
+  align-items: center;
+}
+
+.crumb.current {
+  color: var(--primary);
+}
+
+.crumb-separator {
+  width: 14px;
+  height: 14px;
+  margin: 0 3px;
+  color: var(--text-label); /* reste gris même devant le fichier actif */
+}
+
+/* Barre d'état en bas de la fenêtre code */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--text-label);
+  border-top: 1px solid var(--border-line);
+}
+
+/* Éditeur */
+.editor-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor[hidden] {
+  display: none;
+}
+
+.editor .cm-editor {
+  height: 100%;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+/* Barres de défilement discrètes */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-dim);
+}
+
+/* Claude */
+.spinner {
+  color: var(--primary);
+  animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Mode agentic : Claude Code prend toute la place à droite de la navigation.
+   Les autres fenêtres sont masquées (pas démontées) pour garder leur état. */
+.layout.agent-mode > .sidebar,
+.layout.agent-mode > .center-column,
+.layout.agent-mode > .resize-handle {
+  display: none;
+}
+
+.claude-panel.expanded {
+  flex: 1 1 auto;
+}
+
+/* Conversation centrée et de largeur limitée, lisible sur grand écran */
+.claude-panel.expanded .claude-log,
+.claude-panel.expanded .claude-input,
+.claude-panel.expanded .claude-setup {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* Onglets d'agents : style des onglets de la fenêtre code (.tab-bar / .tab),
+   plus le bouton « + » et la bascule du mode agentic à droite. */
+.agent-tab-bar {
+  overflow: hidden; /* c'est .agent-tab-scroll qui défile */
+}
+
+.agent-tab-scroll {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Sépare les onglets du bouton du mode large, comme les séparateurs d'onglets */
+  border-right: 1px solid var(--border-line);
+  /* Pas de scrollbar-width / scrollbar-color ici : dans Chromium, ces propriétés
+     désactivent les règles ::-webkit-scrollbar ci-dessous. */
+}
+
+/* Barre de défilement très fine : fond transparent, curseur comme les autres barres */
+.agent-tab-scroll::-webkit-scrollbar {
+  height: 2px;
+}
+
+.agent-tab-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agent-tab-scroll::-webkit-scrollbar-thumb {
+  border: none;
+  border-radius: 1px;
+  background: var(--border-strong); /* même couleur que les barres de la fenêtre code */
+}
+
+.agent-tab-add {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  align-self: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  border-radius: 6px;
+  color: var(--text-dim);
+}
+
+.agent-tab-add:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.agent-tab-add-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Bascule du mode large : même espace à gauche (après les onglets) et à droite */
+.agent-tab-bar .title-icon-button {
+  align-self: center;
+  margin: 0 12px;
+}
+
+/* Panneaux d'agents. Mode normal : un seul visible, qui occupe la fenêtre.
+   Mode large : tous dans une grille (colonnes fixées en style inline). */
+.agent-panes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.agent-panes.grid {
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: var(--gap);
+  padding: var(--gap);
+}
+
+.agent-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.agent-pane[hidden] {
+  display: none;
+}
+
+.agent-panes.grid .agent-pane {
+  overflow: hidden;
+  border: 1px solid var(--border-window);
+  border-radius: var(--radius);
+  background: var(--bg-explorer);
+  transition: opacity 0.15s ease;
+}
+
+/* Agent sélectionné (celui qui s'affiche en revenant au mode normal) */
+.agent-panes.grid .agent-pane.active {
+  border-color: var(--border-strong);
+}
+
+/* Pendant un déplacement : le panneau saisi s'estompe, la cible s'allume */
+.agent-pane.dragging {
+  opacity: 0.45;
+}
+
+.agent-pane.drop-target {
+  border-color: var(--primary) !important;
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.agent-pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 36px;
+  padding: 0 6px 0 12px;
+  background: var(--bg-editor-header);
+  border-bottom: 1px solid var(--border-line);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.agent-pane.dragging .agent-pane-header {
+  cursor: grabbing;
+}
+
+.agent-pane-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+/* Branche git de l'agent (worktree), discrète à côté de son nom */
+.agent-pane-branch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-label);
+}
+
+.agent-pane-branch-icon {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+}
+
+/* Croix toujours visible dans un en-tête de panneau, poussée à droite */
+.agent-pane-close {
+  margin-left: auto;
+  visibility: visible;
+}
+
+.agent-grid-toolbar .agent-count {
+  font-size: 11px;
+  color: var(--text-label);
+}
+
+/* Mascotte d'agent : clignement, anneau de travail, saut de fin */
+.mascot {
+  flex-shrink: 0;
+  overflow: visible;
+  transform-origin: 50% 100%; /* le saut se déforme depuis la base */
+}
+
+.mascot-eyes {
+  transform-box: view-box;
+  transform-origin: 198px 198px;
+  transition: transform 70ms ease-in;
+}
+
+.mascot-eyes.blinking {
+  transform: scaleY(0.1);
+}
+
+.mascot-ring {
+  transform-box: view-box;
+  transform-origin: 198px 198px;
+  animation: spin 0.9s linear infinite;
+}
+
+/* Écrasement, envol étiré, atterrissage écrasé, petit rebond */
+.mascot.jumping {
+  animation: mascot-jump 0.6s cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+@keyframes mascot-jump {
+  0% {
+    transform: translateY(0) scale(1, 1);
+  }
+  15% {
+    transform: translateY(0) scale(1.15, 0.85);
+  }
+  40% {
+    transform: translateY(-35%) scale(0.9, 1.1);
+  }
+  65% {
+    transform: translateY(0) scale(1.12, 0.88);
+  }
+  82% {
+    transform: translateY(-6%) scale(0.97, 1.03);
+  }
+  100% {
+    transform: translateY(0) scale(1, 1);
+  }
+}
+
+/* Installation / connexion de Claude Code */
+.claude-setup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 16px 16px;
+}
+
+.claude-setup h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.claude-setup-text {
+  margin: 0;
+  line-height: 1.5;
+  color: var(--text-label);
+}
+
+.claude-setup-error {
+  margin: 0;
+  color: var(--error);
+}
+
+.setup-button {
+  padding: 7px 14px;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  font-weight: 500;
+  color: var(--primary);
+}
+
+.setup-button:hover {
+  background: var(--primary-soft);
+}
+
+.setup-link {
+  padding: 0;
+  color: var(--text-label);
+  text-decoration: underline;
+}
+
+.setup-link:hover {
+  color: var(--text);
+}
+
+.claude-log {
+  /* Espace entre deux blocs, et espace en plus entre les étapes de travail
+     (réflexion, outils) et les messages de l'IA. */
+  --log-gap: 10px;
+  --turn-gap: 10px;
+  flex: 1;
+  overflow: auto;
+  padding: 4px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--log-gap);
+}
+
+.activity + .claude-line.assistant,
+.claude-line.assistant + .activity {
+  margin-top: var(--turn-gap);
+}
+
+/* Fil chronologique : un point au début de chaque bloc, relié au suivant par
+   un trait vertical. Les messages de l'utilisateur (bulles à droite) n'y
+   participent pas et ouvrent un nouveau fil. */
+.tl {
+  position: relative;
+  padding-left: 20px;
+}
+
+/* Point centré sur la première ligne (line-height 1.5 : centre à 0,75em) */
+.tl::before {
+  content: "";
+  position: absolute;
+  top: calc(0.75em - 3.5px);
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--timeline-dot);
+}
+
+.activity.running.tl::before {
+  background: var(--primary);
+}
+
+.activity.error.tl::before,
+.claude-line.error.tl::before {
+  background: var(--error);
+}
+
+/* Trait : du point jusqu'au bloc suivant du fil */
+.tl:has(+ .tl)::after {
+  content: "";
+  position: absolute;
+  top: calc(0.75em + 6px);
+  /* s'arrête juste au-dessus du point du bloc suivant (même écart qu'au départ) */
+  bottom: calc(-1 * var(--log-gap) - 0.75em + 6px);
+  left: 3px;
+  width: 1px;
+  background: var(--timeline);
+}
+
+.activity.tl:has(+ .claude-line.assistant)::after,
+.claude-line.assistant.tl:has(+ .activity)::after {
+  bottom: calc(-1 * (var(--log-gap) + var(--turn-gap)) - 0.75em + 6px);
+}
+
+.claude-line.assistant {
+  color: var(--text-agent);
+}
+
+.claude-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* Message de l'utilisateur : bulle à droite, heure en dessous */
+.user-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  align-self: flex-end;
+  max-width: 85%;
+}
+
+.message-time {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-label);
+}
+
+/* Sous une réponse de l'IA : petite marge au-dessus de l'heure */
+.claude-line.assistant .message-time {
+  margin-top: 4px;
+}
+
+.claude-line.user {
+  align-self: flex-end;
+  max-width: 100%; /* la largeur maximale (85 %) est portée par .user-message */
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+}
+
+/* Étapes de travail de l'IA (réflexion, outils) : discrètes, sur une ligne */
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.5; /* même calcul de point que les messages */
+  color: var(--text-label);
+}
+
+.activity-row-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.activity-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity.running {
+  color: var(--text);
+}
+
+.activity.error {
+  color: var(--error);
+}
+
+/* Icône de chargement qui tourne */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Texte en cours : reflet lumineux qui balaie le libellé */
+.shimmer {
+  background: linear-gradient(
+      90deg,
+      var(--text-label) 0%,
+      var(--text-label) 40%,
+      var(--text-strong) 50%,
+      var(--text-label) 60%,
+      var(--text-label) 100%
+    )
+    0 0 / 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+
+/* Étape d'orchestrateur en erreur : le détail (sortie du build…) se déplie */
+.step-details {
+  display: block;
+}
+
+.step-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.step-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.step-detail {
+  max-height: 220px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--border-line);
+  border-radius: 6px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--text-dim);
+  background: var(--bg-editor);
+}
+
+/* Réponse en cours d'écriture : curseur clignotant en fin de texte */
+.claude-line.streaming .caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--primary);
+  animation: caret-blink 1s steps(1) infinite;
+}
+
+@keyframes caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.claude-line.info {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.claude-line.error {
+  color: var(--error);
+}
+
+.claude-input {
+  padding: 8px;
+}
+
+/* Champ de saisie d'un agent : contexte joint, texte, barre d'outils */
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-window);
+  border-radius: 10px;
+  background: var(--bg-composer);
+  cursor: text;
+}
+
+.composer:focus-within {
+  border-color: var(--primary);
+}
+
+.composer.disabled {
+  opacity: 0.6;
+}
+
+.composer textarea {
+  width: 100%;
+  max-height: 240px; /* au-delà, le texte défile dans le champ */
+  resize: none;
+  padding: 2px 4px;
+  border: none;
+  font: inherit;
+  line-height: 1.5;
+  color: var(--text);
+  background: transparent;
+  outline: none;
+  overflow-y: auto;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 220px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.attachment-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-remove {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: var(--text-dim);
+}
+
+.attachment-remove:hover {
+  color: var(--text-strong);
+  background: var(--bg-active);
+}
+
+.attachment-remove-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Barre d'options sous le texte : collée au champ, séparée par une bordure
+   sur toute la largeur (elle déborde du padding de .composer). */
+.composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -2px -8px 0;
+  padding: 6px 8px 0;
+  border-top: 1px solid var(--border-window);
+}
+
+.composer-spacer {
+  flex: 1;
+}
+
+.composer-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--text-dim);
+}
+
+.composer-button:hover,
+.composer-button[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.composer-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Sélecteur de modèle : texte discret + chevron */
+.composer-model {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 4px 0 6px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.composer-model:hover,
+.composer-model[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.composer-chevron {
+  width: 11px;
+  height: 11px;
+}
+
+.composer-send {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.composer-send:disabled {
+  color: var(--text-dim);
+  background: var(--bg-active);
+  cursor: default;
+}
+
+/* Menus du champ de saisie, ouverts au-dessus du bouton */
+.popover-anchor {
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid var(--border-line);
+  border-radius: 8px;
+  background: var(--bg-explorer);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  cursor: default;
+}
+
+.popover.start {
+  left: 0;
+}
+
+.popover.end {
+  right: 0;
+}
+
+.popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  text-align: left;
+  color: var(--text);
+}
+
+.popover-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.popover-item:disabled {
+  color: var(--text-label);
+  cursor: default;
+}
+
+.popover-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+.popover-check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  color: var(--primary);
+}
+
+.popover-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.popover-description,
+.popover-hint {
+  font-size: 11.5px;
+  color: var(--text-label);
+}
+
+.popover-hint {
+  margin-left: auto;
+  padding-left: 12px;
+}

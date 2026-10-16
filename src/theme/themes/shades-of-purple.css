@@ -1,0 +1,64 @@
+/* Thème « Shades of Purple », d'après le thème VS Code Shades of Purple (Super Dark)
+   d'Ahmad Awais : fonds violets profonds, accent jaune, code très contrasté. */
+:root[data-theme="shades-of-purple"] {
+  color-scheme: dark;
+
+  /* Fonds */
+  --bg-app: #0f0f22; /* fond général, derrière les fenêtres */
+  --bg-window: #131327;
+  --bg-explorer: #131327; /* barre latérale du thème d'origine */
+  --bg-composer: var(--bg-editor);
+  --bg-terminal: #15152b;
+  --bg-editor: #191830; /* éditeur du thème d'origine */
+  --bg-editor-header: #15152b;
+  --border-window: #1f1e3d;
+  --border-line: #222146;
+  --bg-elevated: #1f1f41; /* surlignage de ligne du thème d'origine */
+  --bg-hover: #1f1f41;
+  --bg-active: #2d2b55;
+  --selection: #5706a288;
+
+  --border: #2d2b55;
+  --border-strong: #3d3a73;
+
+  /* Texte */
+  --text: #e1efff;
+  --text-strong: #ffffff;
+  --text-dim: #a599e9;
+  --text-label: #7870ab;
+  --text-tree: #a599e9;
+  --text-explorer: var(--text-dim);
+  --text-agent: var(--text);
+  --timeline: var(--border-line);
+  --timeline-dot: var(--text-label);
+
+  /* Couleur primaire : le jaune du thème d'origine */
+  --primary: #fad000;
+  --primary-soft: color-mix(in srgb, var(--primary) 14%, transparent);
+  --on-primary: #131327;
+
+  /* Couleurs fonctionnelles */
+  --error: #ec3a37;
+
+  /* Code (éditeur) */
+  --line-number: #7870ab;
+  --syntax-text: #ffffff;
+  --syntax-keyword: #ff9d00;
+  --syntax-name: #e1efff;
+  --syntax-property: #ffee80;
+  --syntax-function: #fad000;
+  --syntax-constant: #ff628c;
+  --syntax-definition: #e1efff;
+  --syntax-type: #9effff;
+  --syntax-number: #ff628c;
+  --syntax-operator: #ff9d00;
+  --syntax-special: #e1efff;
+  --syntax-comment: #b362ff;
+  --syntax-comment-style: italic;
+  --syntax-string: #a5ff90;
+  --syntax-heading: #fad000;
+  --syntax-tag: #9effff;
+  --syntax-attribute: #ffb454;
+  --syntax-attribute-style: italic;
+  --syntax-invalid: #ec3a37;
+}

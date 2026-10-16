@@ -1,0 +1,11 @@
+/* Réglages communs à tous les thèmes : polices et dimensions. Les couleurs
+   sont définies par chaque thème dans themes/<id>.css. */
+:root {
+  /* Polices (embarquées via @fontsource, disponibles hors ligne) */
+  --font-ui: "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "Geist Mono Variable", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Mise en page : fenêtres posées sur le fond général */
+  --gap: 0.5rem; /* marge autour de l'app et entre les fenêtres */
+  --radius: 10px;
+}

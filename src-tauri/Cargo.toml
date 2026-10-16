@@ -1,0 +1,38 @@
+[package]
+name = "vibe-ide"
+version = "0.1.0"
+description = "A minimalist IDE for vibe coding, with Claude Code built in"
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+# Le suffixe `_lib` évite un conflit de nom avec le binaire sous Windows.
+name = "vibe_ide_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "time"] }
+which = "7"
+portable-pty = "0.9.0"
+
+# Dépendances propres à un OS : à déclarer ici plutôt que dans [dependencies].
+[target.'cfg(target_os = "windows")'.dependencies]
+# Job Object : les processus enfants (shells, Claude) meurent avec l'app.
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Threading"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

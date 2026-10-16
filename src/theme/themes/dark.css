@@ -1,0 +1,65 @@
+/* Thème « Dark ». Un thème redéfinit toutes ces variables sous son propre
+   sélecteur [data-theme="<id>"] ; c'est aussi le thème par défaut. */
+:root:not([data-theme]),
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Fonds */
+  --bg-app: #000000; /* fond général, derrière les fenêtres */
+  --bg-window: #000000; /* fond par défaut d'une fenêtre */
+  --bg-explorer: #000000; /* fenêtres explorateur et Claude Code, menus, modale */
+  --bg-composer: var(--bg-editor); /* champ de saisie de l'agent : même fond que la fenêtre code */
+  --bg-terminal: #000000; /* fenêtre terminal */
+  --bg-editor: #070707; /* fenêtre code : zone d'écriture */
+  --bg-editor-header: #070707; /* fenêtre code : barre d'onglets */
+  --border-window: #141414; /* contour des fenêtres */
+  --border-line: #141414; /* séparations internes des fenêtres (onglets, fil d'Ariane…) */
+  --bg-elevated: #2a2a2a; /* champs, bulles */
+  --bg-hover: #2a2a2a;
+  --bg-active: #333333;
+  --selection: #2a3a55;
+
+  --border: #2c2c2c;
+  --border-strong: #3a3a3a;
+
+  /* Texte */
+  --text: #c8ccd2;
+  --text-strong: #eceef1;
+  --text-dim: #6b7079;
+  --text-label: #6a6965; /* titres de fenêtre, fil d'Ariane, barre d'état */
+  --text-tree: #969799; /* onglets inactifs, menus */
+  --text-explorer: var(--text-dim); /* fichiers et dossiers : même couleur que la barre de navigation */
+  --text-agent: var(--text-explorer); /* réponses de l'IA : même couleur que les fichiers et dossiers */
+  --timeline: var(--border-window); /* fil chronologique de la conversation : couleur des bordures */
+  --timeline-dot: var(--text-label); /* points du fil : couleur du texte secondaire */
+
+  /* Couleur primaire du thème ; les variantes en dérivent. */
+  --primary: #b3a42b;
+  --primary-soft: color-mix(in srgb, var(--primary) 12%, transparent); /* fonds de sélection */
+  --on-primary: #111111; /* texte posé sur la couleur primaire */
+
+  /* Couleurs fonctionnelles */
+  --error: #e5707a;
+
+  /* Code (éditeur) : palette One Dark */
+  --line-number: var(--text-dim);
+  --syntax-text: var(--text);
+  --syntax-keyword: #c678dd;
+  --syntax-name: #e06c75;
+  --syntax-property: #e06c75;
+  --syntax-function: #61afef;
+  --syntax-constant: #d19a66;
+  --syntax-definition: var(--text);
+  --syntax-type: #e5c07b;
+  --syntax-number: #e5c07b;
+  --syntax-operator: #56b6c2;
+  --syntax-special: #56b6c2;
+  --syntax-comment: #7d8799;
+  --syntax-comment-style: normal;
+  --syntax-string: #98c379;
+  --syntax-heading: #e06c75;
+  --syntax-tag: #e06c75;
+  --syntax-attribute: #e06c75;
+  --syntax-attribute-style: normal;
+  --syntax-invalid: #ffffff;
+}
