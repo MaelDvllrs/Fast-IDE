@@ -40,7 +40,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzQzI0ODk3NkUxRTBGQzkKUldUSkR4NXVsMGpDazI5WkkvdmlQdm01VGtUNlVmUmMzaVprS3lyTmxkUitLTGJwbGpCYWZzdFcK",
       "endpoints": [
-        "https://github.com/MaelDvllrs/IDE/releases/latest/download/latest.json"
+        "https://github.com/MaelDvllrs/Fast-IDE/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

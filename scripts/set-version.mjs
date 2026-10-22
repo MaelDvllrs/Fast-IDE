@@ -2,7 +2,9 @@
 // tauri.conf.json, Cargo.toml), avant de taguer une release.
 //
 // Usage : npm run version:set 0.2.0
-//         git commit -am "Release 0.2.0" && git tag v0.2.0 && git push --follow-tags
+//         git commit -am "Release 0.2.0"
+//         git tag -a v0.2.0 -m "Fast 0.2.0"   (tag annoté : poussé par --follow-tags)
+//         git push --follow-tags               (ou : git push origin v0.2.0)
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];
