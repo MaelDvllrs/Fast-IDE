@@ -1,13 +1,13 @@
 [package]
-name = "vibe-ide"
+name = "fast"
 version = "0.1.0"
-description = "A minimalist IDE for vibe coding, with Claude Code built in"
+description = "Fast, a minimalist IDE for coding with AI agents"
 edition = "2021"
 rust-version = "1.77"
 
 [lib]
 # Le suffixe `_lib` évite un conflit de nom avec le binaire sous Windows.
-name = "vibe_ide_lib"
+name = "fast_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -22,13 +22,23 @@ thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "process", "sync", "time"] }
 which = "7"
 portable-pty = "0.9.0"
+tauri-plugin-opener = "2"
+# API GitHub (connexion OAuth, dépôts) ; TLS en Rust pur, identique sur tous les OS.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+base64 = "0.22"
 
 # Dépendances propres à un OS : à déclarer ici plutôt que dans [dependencies].
 [target.'cfg(target_os = "windows")'.dependencies]
 # Job Object : les processus enfants (shells, Claude) meurent avec l'app.
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Threading"] }
+# Jeton GitHub dans le Gestionnaire d'identifiants Windows.
+keyring = { version = "3", features = ["windows-native"] }
+# Dictée vocale : API WinRT Windows.Media.SpeechRecognition.
+windows = { version = "0.62", features = ["Foundation", "Media_SpeechRecognition"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Jeton GitHub dans le trousseau macOS.
+keyring = { version = "3", features = ["apple-native"] }
 
 [profile.release]
 codegen-units = 1

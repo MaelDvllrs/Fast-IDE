@@ -58,6 +58,10 @@ pub struct StartOptions {
     pub model: Option<String>,
     /// Identifiant d'une conversation à reprendre (changement de modèle en cours de route).
     pub resume: Option<String>,
+    /// Niveau d'effort (`low`, `medium`, `high`, `xhigh`, `max`) ; `None` = celui du compte.
+    pub effort: Option<String>,
+    /// Instructions ajoutées au prompt système de Claude Code ; `Some("")` = retirées.
+    pub system_prompt: Option<String>,
 }
 
 /// Variables qui feraient passer Claude Code par une facturation API au lieu de
@@ -85,6 +89,10 @@ pub struct ClaudeStatus {
     install_command: String,
     /// Commande shell qui lance la connexion, si Claude Code est installé.
     login_command: Option<String>,
+    /// Compte connecté (e-mail, organisation, formule : « pro », « max », « team »…).
+    email: Option<String>,
+    org_name: Option<String>,
+    subscription_type: Option<String>,
 }
 
 /// Claude Code est-il installé, et connecté à un abonnement ?
@@ -110,28 +118,77 @@ pub async fn run_once(cwd: &std::path::Path, prompt: &str) -> AppResult<String> 
     Ok(result["result"].as_str().unwrap_or_default().to_owned())
 }
 
+/// Modèle rapide pour les petites tâches de l'interface (résumé d'une conversation).
+const SUMMARY_MODEL: &str = "claude-haiku-5-5";
+
+/// Réponse courte d'un modèle rapide, sans aucun outil ni session gardée : sert
+/// au résumé en une ligne de chaque conversation d'agent.
+pub async fn quick_answer(prompt: &str) -> AppResult<String> {
+    let mut cmd = claude_command(&platform::claude_program()?);
+    cmd.args(["-p", prompt, "--model", SUMMARY_MODEL, "--tools", "", "--effort", "low"])
+        .args(["--no-session-persistence", "--output-format", "json"])
+        // Hors du projet : rien à lire, rien à modifier.
+        .current_dir(std::env::temp_dir())
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    let out = tokio::time::timeout(std::time::Duration::from_secs(90), cmd.output())
+        .await
+        .map_err(|_| AppError::msg("Claude did not answer in time"))??;
+    let result: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .map_err(|_| AppError::msg(String::from_utf8_lossy(&out.stderr).trim().to_owned()))?;
+    if result["is_error"] == true {
+        return Err(AppError::msg(result["result"].as_str().unwrap_or("Claude failed").to_owned()));
+    }
+    Ok(result["result"].as_str().unwrap_or_default().trim().to_owned())
+}
+
 pub async fn status() -> ClaudeStatus {
     let install_command = platform::claude_install_command().to_owned();
     let Ok(program) = platform::claude_program() else {
-        return ClaudeStatus { installed: false, logged_in: false, install_command, login_command: None };
+        return ClaudeStatus {
+            installed: false,
+            logged_in: false,
+            install_command,
+            login_command: None,
+            email: None,
+            org_name: None,
+            subscription_type: None,
+        };
     };
 
     // `claude auth status` répond en JSON : { "loggedIn": true, "authMethod": "claude.ai", ... }
     let mut cmd = claude_command(&program);
     cmd.args(["auth", "status"]).stdin(Stdio::null()).kill_on_drop(true);
     let output = tokio::time::timeout(std::time::Duration::from_secs(20), cmd.output()).await;
-    let logged_in = match output {
-        Ok(Ok(out)) => serde_json::from_slice::<serde_json::Value>(&out.stdout)
-            .map(|v| v["loggedIn"] == true && v["authMethod"] == "claude.ai")
-            .unwrap_or(false),
-        _ => false,
+    let auth = match output {
+        Ok(Ok(out)) => serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap_or_default(),
+        _ => serde_json::Value::Null,
     };
+    let logged_in = auth["loggedIn"] == true && auth["authMethod"] == "claude.ai";
+    let field = |key: &str| logged_in.then(|| auth[key].as_str().map(str::to_owned)).flatten();
 
     ClaudeStatus {
         installed: true,
         logged_in,
         install_command,
         login_command: Some(platform::claude_login_command(&program)),
+        email: field("email"),
+        org_name: field("orgName"),
+        subscription_type: field("subscriptionType"),
+    }
+}
+
+/// Déconnecte Claude Code du compte claude.ai.
+pub async fn logout() -> AppResult<()> {
+    let mut cmd = claude_command(&platform::claude_program()?);
+    cmd.args(["auth", "logout"]).stdin(Stdio::null()).kill_on_drop(true);
+    let out = tokio::time::timeout(std::time::Duration::from_secs(20), cmd.output())
+        .await
+        .map_err(|_| AppError::msg("Claude Code did not answer in time"))??;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(AppError::msg(String::from_utf8_lossy(&out.stderr).trim().to_owned()))
     }
 }
 
@@ -151,6 +208,11 @@ pub async fn start(app: AppHandle, state: &ClaudeState, id: String, opts: StartO
         "--verbose",
         // Texte envoyé au fur et à mesure (événements `stream_event`) pour l'afficher en direct.
         "--include-partial-messages",
+        // Les demandes d'autorisation (commande à lancer, fichier hors du projet…)
+        // arrivent à FAST (`control_request` / `can_use_tool`) au lieu d'être refusées
+        // d'office faute de fenêtre interactive ; l'interface y répond.
+        "--permission-prompt-tool",
+        "stdio",
     ]);
     if let Some(mode) = &opts.permission_mode {
         cmd.args(["--permission-mode", mode]);
@@ -160,6 +222,17 @@ pub async fn start(app: AppHandle, state: &ClaudeState, id: String, opts: StartO
     }
     if let Some(session) = &opts.resume {
         cmd.args(["--resume", session]);
+    }
+    if let Some(effort) = &opts.effort {
+        cmd.args(["--effort", effort]);
+    }
+    if let Some(prompt) = &opts.system_prompt {
+        if !prompt.trim().is_empty() {
+            cmd.args(["--append-system-prompt", prompt]);
+        }
+        // Sans cela, une conversation reprise garde le prompt système enregistré à
+        // son premier message : une modification (ou un retrait) ne s'appliquerait pas.
+        cmd.args(["--system-prompt-snapshot", "off"]);
     }
     cmd.current_dir(&opts.cwd)
         .stdin(Stdio::piped())
@@ -190,6 +263,60 @@ pub async fn send(state: &ClaudeState, id: &str, text: String) -> AppResult<()> 
         "message": { "role": "user", "content": [{ "type": "text", "text": text }] },
     });
     let mut line = serde_json::to_vec(&message)?;
+    line.push(b'\n');
+    session.stdin.write_all(&line).await?;
+    session.stdin.flush().await?;
+    Ok(())
+}
+
+/// Réponse à une demande d'autorisation de Claude Code (`control_request` reçu
+/// avec `request_id`) : `allow` autorise l'outil tel quel, sinon il est refusé
+/// avec `message` (que Claude lit pour adapter sa suite).
+pub async fn answer_permission(
+    state: &ClaudeState,
+    id: &str,
+    request_id: String,
+    allow: bool,
+    input: serde_json::Value,
+    message: Option<String>,
+) -> AppResult<()> {
+    let mut sessions = state.sessions.lock().await;
+    let session = sessions
+        .get_mut(id)
+        .ok_or_else(|| AppError::msg(format!("unknown session {id}")))?;
+
+    let decision = if allow {
+        serde_json::json!({ "behavior": "allow", "updatedInput": input })
+    } else {
+        serde_json::json!({
+            "behavior": "deny",
+            "message": message.unwrap_or_else(|| "The user denied this action.".into()),
+        })
+    };
+    let reply = serde_json::json!({
+        "type": "control_response",
+        "response": { "subtype": "success", "request_id": request_id, "response": decision },
+    });
+    let mut line = serde_json::to_vec(&reply)?;
+    line.push(b'\n');
+    session.stdin.write_all(&line).await?;
+    session.stdin.flush().await?;
+    Ok(())
+}
+
+/// Arrête le tour en cours d'un agent (bouton Stop) ; la session reste ouverte
+/// et la conversation continue au message suivant.
+pub async fn interrupt(state: &ClaudeState, id: &str) -> AppResult<()> {
+    let mut sessions = state.sessions.lock().await;
+    let session = sessions
+        .get_mut(id)
+        .ok_or_else(|| AppError::msg(format!("unknown session {id}")))?;
+    let request = serde_json::json!({
+        "type": "control_request",
+        "request_id": format!("fast-interrupt-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()),
+        "request": { "subtype": "interrupt" },
+    });
+    let mut line = serde_json::to_vec(&request)?;
     line.push(b'\n');
     session.stdin.write_all(&line).await?;
     session.stdin.flush().await?;

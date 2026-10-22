@@ -294,15 +294,22 @@ button {
 }
 
 .terminal-panel {
-  flex: 0 1 300px;
+  flex: 0 1 240px;
   min-height: 90px;
   background: var(--bg-terminal);
+}
+
+/* En-tête du terminal plus compact, séparé du contenu par une bordure */
+.terminal-panel > .panel-header {
+  height: 32px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-line);
 }
 
 .terminal-host {
   flex: 1;
   min-height: 0;
-  padding: 0 4px 6px 14px;
+  padding: 6px 4px 6px 14px;
 }
 
 /* xterm prend la couleur de la fenêtre (son propre fond est appliqué au canvas) */
@@ -439,6 +446,16 @@ body.resizing-row {
   background: var(--bg-hover);
 }
 
+/* Deuxième bouton d'un en-tête : collé au premier (qui, lui, est poussé à droite) */
+.icon-button.next {
+  margin-left: 0;
+}
+
+.icon-button-icon.small {
+  width: 14px;
+  height: 14px;
+}
+
 .error-bar {
   padding: 6px 12px;
   color: var(--error);
@@ -455,6 +472,32 @@ body.resizing-row {
   margin: 0;
   padding: 0 16px;
   color: var(--text-label);
+}
+
+/* Explorateur vide : bouton « Open Folder » fin, sur toute la largeur */
+.sidebar-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 12px;
+}
+
+.thin-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-explorer);
+}
+
+.thin-button:hover {
+  color: var(--text-strong);
+  border-color: var(--primary);
 }
 
 .sidebar-placeholder {
@@ -731,6 +774,82 @@ body.resizing-row {
   color: var(--text-strong);
 }
 
+/* Écran d'accueil (aucun dossier ouvert) : grand logo + mascotte qui salue */
+.welcome-screen {
+  position: relative;
+  flex: 1;
+  display: grid;
+  place-items: center;
+  background: var(--bg-editor);
+}
+
+/* Logo FAST (écran d'accueil, fenêtre code vide) */
+.fast-logo {
+  margin: 0;
+  font-family: var(--font-code);
+  /* Le logo fait 42 colonnes : sa taille suit la largeur de la fenêtre */
+  font-size: clamp(9px, 1.9vw, 24px);
+  line-height: 1.15;
+  color: var(--primary);
+  user-select: none;
+}
+
+/* Fenêtre code sans fichier : logo plus petit, centré */
+.fast-logo.small {
+  font-size: clamp(7px, 1.1vw, 15px);
+}
+
+.editor-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.welcome-mascot {
+  position: absolute;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.welcome-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 260px;
+  margin-bottom: 30px; /* la bulle « sort » au-dessus de la mascotte */
+  padding: 10px 14px;
+  border: 1px solid var(--border-window); /* bordure normale des fenêtres */
+  /* Coin pointu vers la mascotte, en bas à droite */
+  border-radius: 12px 12px 3px 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--bg-explorer); /* fond de la fenêtre explorateur */
+  animation: bubble-in 0.35s cubic-bezier(0.3, 1.4, 0.5, 1) 0.2s both;
+}
+
+.welcome-bubble strong {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.welcome-link {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+}
+
 /* Onglets des fichiers ouverts */
 .tab-bar {
   display: flex;
@@ -925,10 +1044,19 @@ body.resizing-row {
 
 /* Mode agentic : Claude Code prend toute la place à droite de la navigation.
    Les autres fenêtres sont masquées (pas démontées) pour garder leur état. */
-.layout.agent-mode > .sidebar,
-.layout.agent-mode > .center-column,
-.layout.agent-mode > .resize-handle {
+.layout.agent-mode > .center-column {
   display: none;
+}
+
+/* Sauf la fenêtre d'un agent (ouverte depuis le panneau Agents) : en mode Vibe,
+   elle s'affiche à côté des agents, qui gardent le reste de la place. */
+.layout.agent-mode > .center-column.showing-agent {
+  display: flex;
+  flex: 1 1 0;
+}
+
+.layout.agent-mode > .center-column.showing-agent ~ .claude-panel.expanded {
+  flex: 1 1 0;
 }
 
 .claude-panel.expanded {
@@ -956,8 +1084,6 @@ body.resizing-row {
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  /* Sépare les onglets du bouton du mode large, comme les séparateurs d'onglets */
-  border-right: 1px solid var(--border-line);
   /* Pas de scrollbar-width / scrollbar-color ici : dans Chromium, ces propriétés
      désactivent les règles ::-webkit-scrollbar ci-dessous. */
 }
@@ -1000,11 +1126,6 @@ body.resizing-row {
 }
 
 /* Bascule du mode large : même espace à gauche (après les onglets) et à droite */
-.agent-tab-bar .title-icon-button {
-  align-self: center;
-  margin: 0 12px;
-}
-
 /* Panneaux d'agents. Mode normal : un seul visible, qui occupe la fenêtre.
    Mode large : tous dans une grille (colonnes fixées en style inline). */
 .agent-panes {
@@ -1099,15 +1220,121 @@ body.resizing-row {
   height: 11px;
 }
 
-/* Croix toujours visible dans un en-tête de panneau, poussée à droite */
+/* IA puis réglages de l'agent, poussés à droite (avant la croix) */
+.agent-pane-settings {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  /* Même couleur que la croix de fermeture voisine */
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.agent-pane-settings:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.agent-pane-settings-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.agent-pane-ai {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-label);
+}
+
+.agent-pane-ai-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Croix toujours visible dans un en-tête de panneau */
 .agent-pane-close {
-  margin-left: auto;
   visibility: visible;
 }
 
-.agent-grid-toolbar .agent-count {
-  font-size: 11px;
-  color: var(--text-label);
+
+
+/* En-tête du mode Vibe : un peu plus bas que les autres en-têtes */
+.agent-grid-toolbar {
+  gap: 10px;
+  height: 30px;
+  padding-left: 12px;
+}
+
+.agent-stack {
+  display: flex;
+  align-items: center;
+}
+
+/* Mascottes superposées : chacune passe sous la suivante, séparée par un liseré au fond du panneau */
+.agent-stack-item {
+  display: grid;
+  margin-left: -4px;
+  padding: 1.5px;
+  border-radius: 5px;
+  background: var(--bg-explorer);
+}
+
+.agent-stack-item:first-child {
+  margin-left: 0;
+}
+
+.agent-add-button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.agent-add-button:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.agent-add-icon {
+  width: 13px;
+  height: 13px;
+}
+
+
+
+.session-ais {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.session-ai {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.session-ai-icon {
+  display: block;
+  width: 13px;
+  height: 13px;
 }
 
 /* Mascotte d'agent : clignement, anneau de travail, saut de fin */
@@ -1115,6 +1342,13 @@ body.resizing-row {
   flex-shrink: 0;
   overflow: visible;
   transform-origin: 50% 100%; /* le saut se déforme depuis la base */
+}
+
+/* Regard sur le côté : le carré noir et les yeux glissent en douceur */
+.mascot-face,
+.mascot-look {
+  transform-box: view-box;
+  transition: transform 0.35s cubic-bezier(0.3, 0.7, 0.4, 1);
 }
 
 .mascot-eyes {
@@ -1215,7 +1449,7 @@ body.resizing-row {
   --turn-gap: 10px;
   flex: 1;
   overflow: auto;
-  padding: 4px 16px 16px;
+  padding: 16px 16px 16px;
   display: flex;
   flex-direction: column;
   gap: var(--log-gap);
@@ -1311,6 +1545,41 @@ body.resizing-row {
   border-radius: 8px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
+}
+
+/* Conversation vide : la mascotte de l'agent se présente, au centre */
+.agent-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: auto 0; /* centré verticalement dans la conversation */
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.agent-intro-title {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.agent-intro-text {
+  max-width: 300px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.agent-intro-text code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--text);
+  background: var(--bg-elevated);
 }
 
 /* Étapes de travail de l'IA (réflexion, outils) : discrètes, sur une ligne */
@@ -1672,4 +1941,3074 @@ body.resizing-row {
 .popover-hint {
   margin-left: auto;
   padding-left: 12px;
+}
+
+/* --- Boutons communs ------------------------------------------------------ */
+.thin-button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.thin-button-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.primary-button {
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.primary-button:hover {
+  background: color-mix(in srgb, var(--primary) 85%, white);
+}
+
+.primary-button:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.primary-button.wide {
+  width: 100%;
+  height: 28px;
+}
+
+.secondary-button {
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+}
+
+.secondary-button:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.primary-button-icon,
+.secondary-button-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.link-button {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.form-error {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--error);
+}
+
+/* --- Connexion GitHub ------------------------------------------------------- */
+.github-signin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.github-code {
+  padding: 10px 18px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-code);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--text-strong);
+  user-select: all;
+}
+
+.github-signin-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.github-signin-actions .thin-button {
+  width: auto;
+  padding: 0 12px;
+}
+
+.github-waiting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.github-waiting-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.account-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+}
+
+.account-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.account-login {
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+/* --- Dialogues (publier, cloner) ------------------------------------------ */
+.modal.dialog {
+  flex-direction: column;
+  width: min(520px, calc(100vw - 48px));
+  height: auto;
+  max-height: min(600px, calc(100vh - 80px));
+}
+
+.dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 20px 24px 24px;
+}
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-row .setting-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-prefix {
+  color: var(--text-dim);
+}
+
+.field-optional {
+  font-weight: 400;
+  color: var(--text-label);
+}
+
+.choice-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-align: left;
+}
+
+.choice:hover {
+  border-color: var(--border-strong);
+}
+
+.choice.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.choice-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+  color: var(--text-dim);
+}
+
+.choice.active .choice-icon {
+  color: var(--primary);
+}
+
+.choice-title {
+  display: block;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.choice-text {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-search {
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+}
+
+.repo-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  max-height: 380px;
+  overflow: auto;
+  margin: 0 -8px;
+}
+
+.repo-empty {
+  padding: 12px 8px;
+  color: var(--text-label);
+}
+
+.repo-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.repo-item:hover {
+  background: var(--bg-hover);
+}
+
+.repo-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.repo-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.repo-owner {
+  color: var(--text-dim);
+}
+
+.repo-lock {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  color: var(--text-label);
+}
+
+.repo-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+.repo-updated {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-label);
+}
+
+/* --- Panneau Git ------------------------------------------------------------ */
+.scm-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px;
+}
+
+.scm-empty p {
+  margin: 0 0 4px;
+  color: var(--text-dim);
+}
+
+.scm-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 8px 10px;
+}
+
+.scm-branch-anchor {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.scm-branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--text-explorer);
+}
+
+.scm-branch:hover,
+.scm-branch[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.scm-branch-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+}
+
+.scm-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scm-branch-chevron {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  color: var(--text-label);
+}
+
+.scm-sync {
+  display: flex;
+  gap: 2px;
+}
+
+.scm-sync-button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.scm-sync-button:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.scm-sync-button:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.scm-sync-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.scm-branch-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: max(240px, 100%);
+  max-height: 320px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+}
+
+.scm-branch-search {
+  margin: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg-explorer);
+  outline: none;
+}
+
+.scm-branch-search:focus {
+  border-color: var(--primary);
+}
+
+.scm-branch-list {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 0 4px 6px;
+}
+
+.scm-branch-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: left;
+  color: var(--text-explorer);
+}
+
+.scm-branch-item:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.scm-branch-item.current,
+.scm-branch-item.create {
+  color: var(--primary);
+}
+
+.scm-branch-item-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+}
+
+.scm-branch-group {
+  padding: 8px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+.scm-publish {
+  padding: 0 12px 8px;
+}
+
+.scm-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 10px;
+}
+
+.scm-message {
+  resize: none;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg-editor);
+  outline: none;
+}
+
+.scm-message:focus {
+  border-color: var(--primary);
+}
+
+.scm-message::placeholder {
+  color: var(--text-label);
+}
+
+.scm-notice,
+.scm-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 12px 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.dialog-body .scm-notice {
+  margin: 0;
+}
+
+.scm-notice {
+  color: var(--text-dim);
+}
+
+.scm-error {
+  color: var(--error);
+}
+
+.scm-notice-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+  color: var(--primary);
+}
+
+.scm-lists {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.scm-section ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.scm-section-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 10px 0 4px;
+}
+
+.scm-section-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  color: var(--text-label);
+}
+
+.scm-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--text-dim);
+  background: var(--bg-active);
+}
+
+.scm-row {
+  display: flex;
+  align-items: center;
+  padding-right: 10px;
+}
+
+.scm-row:hover {
+  background: var(--bg-hover);
+}
+
+.scm-file {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 24px;
+  padding-left: 24px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-align: left;
+  color: var(--text-explorer);
+}
+
+.scm-file:disabled {
+  cursor: default;
+}
+
+.scm-file.deleted .scm-file-name {
+  text-decoration: line-through;
+}
+
+.scm-file-name {
+  flex-shrink: 0;
+}
+
+.scm-row:hover .scm-file-name {
+  color: var(--text);
+}
+
+.scm-file-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
+  color: var(--text-label);
+}
+
+/* Action d'une ligne (indexer / retirer) : visible au survol seulement */
+.scm-row-action {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  visibility: hidden;
+}
+
+.scm-row:hover .scm-row-action,
+.scm-section-header:hover .scm-row-action {
+  visibility: visible;
+}
+
+.scm-row-action:hover {
+  color: var(--text-strong);
+  background: var(--bg-active);
+}
+
+.scm-row-action-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.scm-badge {
+  flex-shrink: 0;
+  width: 14px;
+  margin-left: 4px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.scm-badge.added {
+  color: var(--git-added);
+}
+
+.scm-badge.modified {
+  color: var(--git-modified);
+}
+
+.scm-badge.deleted {
+  color: var(--git-deleted);
+}
+
+.scm-badge.renamed {
+  color: var(--git-renamed);
+}
+
+.scm-badge.conflict {
+  color: var(--git-conflict);
+}
+
+/* Connexion GitHub en haut du panneau Git : bouton fin sur toute la largeur */
+.scm-signin {
+  padding: 0 12px 10px;
+}
+
+.github-signin.wide {
+  align-items: stretch;
+  gap: 8px;
+}
+
+.github-signin.wide .github-code {
+  text-align: center;
+  font-size: 18px;
+}
+
+.github-signin.wide .github-signin-actions .thin-button {
+  flex: 1;
+  padding: 0 8px;
+}
+
+.github-signin.wide .github-waiting {
+  flex-wrap: wrap;
+}
+
+.scm-clean {
+  margin: 4px 16px;
+  color: var(--text-label);
+}
+
+/* --- Profil GitHub (bas de la barre d'activité) ---------------------------- */
+.account-button-avatar {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  /* (32px - 20px) / 2 : centré comme les icônes de 18px */
+  margin: 0 -1px;
+  border-radius: 50%;
+  outline: 1px solid var(--border-strong);
+}
+
+.account-button:hover .account-button-avatar,
+.account-button[aria-expanded="true"] .account-button-avatar {
+  outline-color: var(--primary);
+}
+
+.account-menu {
+  position: fixed;
+  z-index: 40;
+  width: 260px;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.55);
+}
+
+.account-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+}
+
+.account-menu-separator {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+}
+
+.account-menu-item:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.account-menu-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--text-dim);
+}
+
+.account-menu-signin {
+  padding: 8px;
+}
+
+/* Derniers commits, en bas du panneau Git : une timeline compacte */
+.scm-history {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-line);
+  padding-top: 4px;
+}
+
+.scm-history.open {
+  display: flex;
+  flex-direction: column;
+  max-height: 40%;
+}
+
+.scm-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+  overflow: auto;
+}
+
+.scm-commit-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 24px;
+  padding: 0 12px 0 22px;
+  text-align: left;
+  color: var(--text-explorer);
+}
+
+.scm-commit-row:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.scm-commit-row:disabled {
+  cursor: default;
+}
+
+/* Trait vertical qui relie les commits */
+.scm-commit-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 25.5px;
+  width: 1px;
+  background: var(--timeline);
+}
+
+li:first-child > .scm-commit-row::before {
+  top: 50%;
+}
+
+li:last-child > .scm-commit-row::before {
+  bottom: 50%;
+}
+
+.scm-commit-dot {
+  position: relative;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--timeline-dot);
+  border-radius: 50%;
+  background: var(--bg-window);
+}
+
+/* Commit pas encore poussé : point plein, couleur primaire */
+.scm-commit-dot.unpushed {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.scm-commit-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scm-commit-time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-label);
+}
+
+/* --- Panneau Agents : un onglet par IA ------------------------------------- */
+.provider-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 4px 12px 20px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.provider-tab {
+  --logo-opacity: 0.55;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.provider-tab:hover {
+  color: var(--text);
+}
+
+.provider-tab:hover,
+.provider-tab.active {
+  --logo-opacity: 1;
+}
+
+.provider-tab.active {
+  background: var(--bg-active);
+}
+
+/* IA pas encore branchée : logo plus discret */
+.provider-tab.soon {
+  --logo-opacity: 0.3;
+}
+
+.provider-tab.soon:hover,
+.provider-tab.soon.active {
+  --logo-opacity: 0.6;
+}
+
+.provider-tab-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--logo);
+  opacity: var(--logo-opacity);
+}
+
+.provider-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px 20px;
+}
+
+.provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.provider-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.provider-card-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--logo);
+}
+
+.provider-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Initiale de l'e-mail dans un rond (Claude Code ne fournit pas de photo) */
+.provider-account-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-weight: 600;
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.provider-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.provider-actions {
+  display: flex;
+  gap: 14px;
+}
+
+/* Action discrète : icône + petit texte, sans bordure */
+.provider-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.provider-action:hover {
+  color: var(--text-strong);
+}
+
+.provider-action:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.provider-action-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.provider-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.provider-row-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+  color: var(--git-modified);
+}
+
+.provider-row.ok .provider-row-icon {
+  color: var(--git-added);
+}
+
+.provider-note {
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+.provider-section-title {
+  margin: 28px 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-label);
+}
+
+.provider-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.provider-model {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 4px;
+}
+
+.provider-model-name {
+  color: var(--text-explorer);
+}
+
+.provider-model-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-label);
+}
+
+.provider-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 0;
+  text-align: center;
+}
+
+.provider-soon-icon {
+  width: 36px;
+  height: 36px;
+  color: var(--logo);
+  opacity: 0.6;
+}
+
+.provider-soon-title {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.provider-soon-badge {
+  padding: 2px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* --- Panneau Agents : une ligne par agent ---------------------------------- */
+.agent-list {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 12px;
+  overflow: auto;
+}
+
+/* « Add agent », collé en bas du panneau */
+.agent-list-footer {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border-line);
+}
+
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.agent-row:hover {
+  background: var(--bg-hover);
+}
+
+.agent-row .mascot {
+  flex-shrink: 0;
+}
+
+.agent-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agent-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+}
+
+.agent-row-provider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-label);
+}
+
+.agent-row-provider-icon {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.agent-row-tokens {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-explorer);
+}
+
+
+/* --- Fenêtre d'un agent (à la place du code et du terminal) ---------------- */
+.center-column.showing-agent > :not(.agent-detail) {
+  display: none;
+}
+
+.agent-detail {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg-editor);
+}
+
+.agent-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  height: 48px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--border-line);
+}
+
+.agent-detail-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.agent-detail-status {
+  padding: 1px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.agent-detail-status.working {
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  color: var(--primary);
+}
+
+.agent-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* Même retrait que l'en-tête de la fenêtre */
+  padding: 16px 12px 20px 16px;
+}
+
+
+
+
+
+
+
+
+
+
+
+/* Modèle d'un agent : menu de l'IA + menu du modèle, sur toute la largeur */
+.agent-options {
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-options-title {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.agent-options-description {
+  margin: 4px 0 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.agent-option-row {
+  display: flex;
+  gap: 10px;
+}
+
+/* Section sans carte : un peu d'air avant la suivante */
+/* Sections de la fenêtre d'un agent séparées par un trait */
+.agent-options + .agent-options {
+  margin-top: 14px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-line);
+}
+
+/* Bloc d'ensemble (Overview, Activity, Usage) : sans trait entre ses parties */
+.agent-options + .agent-options.joined {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* Les deux menus se partagent la largeur */
+.agent-option-row > .popover-anchor {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.model-select:hover,
+.model-select[aria-expanded="true"] {
+  border-color: var(--border-strong);
+}
+
+.model-select-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.model-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.popover-item:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Ici les menus s'ouvrent sous le bouton (dans le champ de saisie, au-dessus) et prennent sa largeur */
+.agent-options .popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  width: 100%;
+}
+
+/* Options de session (limite de jetons, effort) : deux colonnes, libellé au-dessus */
+.agent-option {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.agent-option > .popover-anchor {
+  width: 100%;
+}
+
+.agent-option-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.agent-option-value {
+  font-family: var(--font-code);
+  color: var(--text-strong);
+}
+
+/* Curseur de limite : même hauteur que les menus voisins */
+.limit-slider-box {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 4px;
+}
+
+.limit-slider {
+  /* Position du curseur (0 à 1) ; le remplissage s'arrête au centre de la poignée de 14px */
+  --ratio: 0;
+  --fill: calc(7px + (100% - 14px) * var(--ratio));
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border-radius: 2px;
+  background: linear-gradient(to right, var(--primary) var(--fill), var(--bg-active) var(--fill));
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.limit-slider::-webkit-slider-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--bg-editor);
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  appearance: none;
+}
+
+.limit-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--primary-soft), 0 0 0 1px var(--primary);
+}
+
+/* Une seule ligne : le texte qui change en glissant le curseur ne décale rien */
+.agent-option-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-label);
+}
+
+
+
+
+/* --- Tableau de bord d'un agent : cartes pleines, grands chiffres ---------- */
+
+.dash-card {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  /* Fond des fenêtres du thème : contraste avec la zone de l'agent */
+  background: var(--bg-window);
+}
+
+.dash-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dash-card-title {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.dash-card-text {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.dash-card-aside {
+  text-align: right;
+}
+
+.dash-card-aside .dash-card-text {
+  margin: 0 0 2px;
+}
+
+.dash-value {
+  font-family: var(--font-code);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-strong);
+}
+
+
+
+
+
+
+
+
+
+.dash-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.dash-table th {
+  padding: 8px 0;
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-label);
+}
+
+.dash-table td {
+  padding: 10px 0;
+  border-top: 1px dashed var(--border-strong);
+  color: var(--text-strong);
+}
+
+.dash-table th:not(:first-child),
+.dash-table td:not(:first-child) {
+  text-align: right;
+}
+
+.dash-table td:last-child {
+  font-family: var(--font-code);
+}
+
+/* Prompt système d'un agent */
+.system-prompt {
+  resize: vertical;
+  min-height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-window);
+  outline: none;
+}
+
+.system-prompt:focus {
+  border-color: var(--primary);
+}
+
+.system-prompt::placeholder {
+  font-family: var(--font-ui);
+  color: var(--text-label);
+}
+
+.system-prompt-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.system-prompt-actions .agent-option-hint {
+  flex: 1;
+}
+
+/* --- Graphiques de la fenêtre d'un agent ------------------------------------ */
+.usage-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.usage-info {
+  display: grid;
+  color: var(--text-label);
+  cursor: help;
+}
+
+.usage-info-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.usage-plot {
+  display: flex;
+  gap: 6px;
+  height: 120px;
+}
+
+.usage-axis-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  /* Largeur fixe : la zone de tracé est la même dans les deux graphiques */
+  flex-shrink: 0;
+  width: 30px;
+  /* Aligné sur la zone de la courbe (sans la ligne des heures) */
+  padding-bottom: 20px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+.usage-graph {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Seulement le tracé de la courbe, pas les icônes posées dans le graphique */
+.usage-graph > svg {
+  display: block;
+  width: 100%;
+  height: calc(100% - 20px);
+  overflow: visible;
+}
+
+.usage-axis-x {
+  position: relative;
+  height: 20px;
+}
+
+.usage-axis-x span {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-family: var(--font-code);
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.usage-axis-x span:first-child {
+  transform: none;
+}
+
+.usage-axis-x span:last-child:not(:first-child) {
+  transform: translateX(-100%);
+}
+
+.usage-chart-empty {
+  display: grid;
+  place-items: center;
+  height: 120px;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+/* Section Info : libellé à gauche, valeur à droite, part des jetons en retrait */
+.info-table td:first-child {
+  color: var(--text-dim);
+}
+
+.info-share {
+  display: inline-block;
+  min-width: 44px;
+  margin-left: 12px;
+  color: var(--text-label);
+}
+
+.agent-row-limit {
+  color: var(--text-label);
+}
+
+/* Jauge de jetons d'un agent : couleur primaire, rouge à la limite, grisée sans limite */
+.token-meter {
+  width: 64px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-active);
+}
+
+.token-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.token-meter.full > span {
+  background: var(--error);
+}
+
+.token-meter.none {
+  opacity: 0.5;
+}
+
+/* Dossier de l'agent : chemin tronqué au début si trop long, bouton « Open » à droite */
+.info-path {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  max-width: 100%;
+}
+
+.info-path-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  font-family: var(--font-code);
+  font-size: 12px;
+}
+
+.info-table {
+  table-layout: fixed;
+}
+
+.info-table td:first-child {
+  width: 120px;
+}
+
+/* Contenu de la fenêtre d'un agent : largeur maximale, centré sur les grands écrans */
+.agent-detail-body > * {
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+/* --- Vue d'ensemble : cartes limite / effort / coût ------------------------ */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.overview-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+}
+
+.overview-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.overview-card-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-dim);
+}
+
+.overview-value {
+  margin-top: 14px;
+  font-family: var(--font-code);
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.overview-value-muted {
+  color: var(--text-dim);
+}
+
+.overview-meter {
+  height: 5px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--bg-active);
+}
+
+.overview-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.overview-meter.primary > span {
+  background: var(--primary);
+}
+
+.overview-meter.warning > span {
+  background: var(--git-modified);
+}
+
+.overview-meter.danger > span {
+  background: var(--error);
+}
+
+.overview-meter.none {
+  opacity: 0.5;
+}
+
+.overview-caption {
+  margin-top: 8px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.overview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+/* Action secondaire (texte) et principale (bouton plein clair) */
+.overview-ghost {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.overview-ghost:hover {
+  color: var(--text-strong);
+}
+
+.overview-button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bg-window);
+  background: var(--text-strong);
+}
+
+.overview-button:hover,
+.overview-button[aria-expanded="true"] {
+  background: var(--text);
+}
+
+.overview-card .popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+/* Réglage ouvert dans une carte (curseur de limite) */
+.overview-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-strong);
+}
+
+/* --- Activité : une case par jour, une colonne par semaine ----------------- */
+.activity-card {
+  --weeks: 52;
+  --cell-gap: 3px;
+  --days-width: 28px;
+}
+.activity-peak {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.activity-peak-value {
+  font-family: var(--font-code);
+  color: var(--text-strong);
+}
+
+/* Les cases s'agrandissent pour remplir la largeur de la carte (52 semaines) */
+.activity-grid-wrap {
+  --cell: max(7px, calc((100cqw - var(--days-width) - 8px - (var(--weeks) - 1) * var(--cell-gap)) / var(--weeks)));
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  container-type: inline-size;
+}
+
+.activity-rows {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-rows: repeat(7, var(--cell));
+  gap: var(--cell-gap);
+  width: var(--days-width);
+  /* Aligné sous la ligne des heures */
+  padding-top: 20px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.activity-rows span {
+  display: flex;
+  align-items: center;
+}
+
+.activity-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.activity-hours,
+.activity-grid {
+  display: grid;
+  gap: var(--cell-gap);
+  min-width: min-content;
+}
+
+.activity-hours {
+  height: 20px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.activity-hours span {
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.activity-column {
+  display: grid;
+  grid-template-rows: repeat(7, var(--cell));
+  gap: var(--cell-gap);
+}
+
+.activity-cell {
+  display: block;
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: 2px;
+  background: var(--bg-active);
+}
+
+/* Intensités : la couleur primaire, de plus en plus opaque */
+.activity-cell.l1 {
+  background: color-mix(in srgb, var(--primary) 30%, var(--bg-active));
+}
+
+.activity-cell.l2 {
+  background: color-mix(in srgb, var(--primary) 55%, var(--bg-active));
+}
+
+.activity-cell.l3 {
+  background: color-mix(in srgb, var(--primary) 80%, var(--bg-active));
+}
+
+.activity-cell.l4 {
+  background: var(--primary);
+}
+
+.activity-cell.future {
+  opacity: 0.35;
+}
+
+.activity-cell.peak {
+  outline: 1.5px solid var(--text-strong);
+  outline-offset: 1px;
+}
+
+.activity-legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 14px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.activity-legend span:first-child {
+  margin-right: 4px;
+}
+
+.activity-legend span:last-child {
+  margin-left: 4px;
+}
+
+.activity-legend .activity-cell {
+  width: 11px;
+  height: 11px;
+}
+
+/* --- Graphiques : utilisation globale et par modèle ------------------------ */
+/* Deux colonnes strictement égales (la largeur ne dépend pas du contenu) */
+.chart-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 10px;
+}
+
+.chart-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chart-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.chart-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.chart-tab {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.chart-tab:hover {
+  color: var(--text);
+}
+
+.chart-tab.active {
+  color: var(--text-strong);
+  background: var(--bg-active);
+}
+
+.chart-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.chart-range:hover,
+.chart-range[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.chart-controls .popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+  min-width: 140px;
+}
+
+.usage-plot.tall {
+  height: 170px;
+  margin-top: 16px;
+}
+
+.chart-guide {
+  stroke: var(--border-strong);
+  stroke-dasharray: 4 4;
+}
+
+.chart-dot {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--primary);
+  border-radius: 50%;
+  background: var(--bg-window);
+  transform: translate(-50%, -50%);
+}
+
+.model-bars {
+  display: flex;
+  justify-content: space-around;
+  gap: 12px;
+  /* Zone de tracé : la même que la courbe (la ligne du bas fait 20px) */
+  height: calc(100% - 20px);
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.chart-bottom {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 6px;
+  height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.model-bars-empty {
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+/* Une barre par modèle, son icône posée dessus */
+.model-bar-slot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  max-width: 72px;
+  min-width: 0;
+}
+
+
+.model-bar-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.model-bar {
+  width: min(28px, 70%);
+  border-radius: 4px 4px 0 0;
+  background: var(--bg-active);
+}
+
+/* Modèle le plus utilisé : barre en couleur primaire */
+.model-bar-slot.top .model-bar {
+  background: color-mix(in srgb, var(--primary) 70%, var(--bg-active));
+}
+
+
+
+
+.chart-card .usage-chart-empty {
+  height: 170px;
+  margin-top: 16px;
+}
+
+/* Icône du modèle le plus utilisé, en tout petit à côté du texte */
+.model-summary-icon {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin-bottom: 2px;
+}
+
+/* Axes des graphiques : trait vertical à gauche et horizontal en bas de la zone
+   de tracé (la ligne des libellés, 20px, reste en dessous) */
+.chart-axes {
+  position: absolute;
+  inset: 0 0 20px 0;
+  border-left: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  pointer-events: none;
+}
+
+/* Graduation : petit trait sous l'axe des x, au-dessus de chaque libellé */
+.usage-axis-x .chart-tick::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 1px;
+  height: 4px;
+  background: var(--border-strong);
+}
+
+.usage-axis-x .chart-tick:first-child::before {
+  left: 0;
+}
+
+.usage-axis-x .chart-tick:last-child:not(:first-child)::before {
+  left: auto;
+  right: 0;
+}
+
+.usage-axis-x span {
+  padding-top: 4px;
+}
+
+/* --- Bouton Run de la barre du haut, collé aux boutons de fenêtre ---------- */
+.titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 0 4px;
+}
+
+.titlebar-actions + .window-controls {
+  margin-left: 0;
+}
+
+.run-control {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.run-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text-dim);
+}
+
+.run-button:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.run-button.play {
+  color: var(--git-added);
+}
+
+.run-button.stop,
+.run-button.error {
+  color: var(--error);
+}
+
+.run-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Adresse de l'application web lancée, à gauche des boutons */
+.run-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin-right: 4px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-family: var(--font-code);
+  font-size: 11.5px;
+  color: var(--primary);
+}
+
+.run-link:hover {
+  background: var(--primary-soft);
+}
+
+.run-link-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Icônes pleines (lecture, arrêt) : le trait seul est trop fin à cette taille */
+.run-button.play .run-icon,
+.run-button.stop .run-icon {
+  fill: currentColor;
+}
+
+/* Préférences → Project : choix de la commande Run */
+.setting-group {
+  margin-top: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-line);
+}
+
+.run-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.run-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.run-option:hover {
+  background: var(--bg-hover);
+}
+
+.run-option input[type="radio"] {
+  accent-color: var(--primary);
+}
+
+.run-option-label {
+  flex-shrink: 0;
+  min-width: 90px;
+  color: var(--text-strong);
+}
+
+.run-option-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.run-option-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+}
+
+/* --- Onglets du terminal : Terminal | Run ----------------------------------- */
+.terminal-tabs {
+  gap: 2px;
+  padding-left: 8px;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+}
+
+.terminal-tab:hover {
+  color: var(--text);
+}
+
+.terminal-tab[aria-selected="true"] {
+  color: var(--text-strong);
+}
+
+/* État du programme lancé : vert en cours, gris arrêté, rouge en échec */
+.run-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-label);
+}
+
+.run-dot.running {
+  background: var(--git-added);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--git-added) 25%, transparent);
+}
+
+.run-dot.stopping {
+  background: var(--git-modified);
+}
+
+.run-dot.failed {
+  background: var(--error);
+}
+
+.terminal-run-info {
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.terminal-run-info code {
+  font-family: var(--font-code);
+  color: var(--text);
+}
+
+/* Onglet masqué : le terminal reste monté (son contenu est gardé) */
+.terminal-host[hidden] {
+  display: none;
+}
+
+/* --- Choix du mode au milieu de la barre du haut : IDE | Vibe --------------- */
+.titlebar-center {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+.mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--bg-window);
+}
+
+.mode-option {
+  height: 22px;
+  min-width: 56px;
+  padding: 0 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.mode-option:hover {
+  color: var(--text);
+}
+
+.mode-option[aria-checked="true"] {
+  color: var(--text-strong);
+  background: var(--bg-active);
+}
+
+/* Micro du champ de saisie : rouge et pulsant pendant la dictée */
+.composer-mic.listening {
+  color: var(--error);
+  background: color-mix(in srgb, var(--error) 14%, transparent);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--error) 18%, transparent);
+  }
+}
+
+.composer-voice-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 6px;
+  font-size: 11.5px;
+  color: var(--error);
+}
+
+/* --- Commandes « / » du champ de saisie des agents ------------------------- */
+.composer {
+  position: relative;
+}
+
+.command-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--border-line);
+  border-radius: 8px;
+  background: var(--bg-explorer);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+.command-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  text-align: left;
+}
+
+.command-item.active {
+  background: var(--bg-hover);
+}
+
+.command-name {
+  flex-shrink: 0;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  color: var(--primary);
+}
+
+.command-description {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.command-badge {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-size: 10.5px;
+  color: var(--text-label);
+}
+
+.command-active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.command-hint {
+  color: var(--text-label);
+}
+
+/* Commit proposé par /commit, dans la conversation */
+.commit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-window);
+}
+
+.commit-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-strong);
+}
+
+.commit-card-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--primary);
+}
+
+.commit-card-message {
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg-editor);
+  outline: none;
+}
+
+.commit-card-message:focus {
+  border-color: var(--primary);
+}
+
+.commit-card-message:disabled {
+  opacity: 0.7;
+}
+
+.commit-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.commit-card-status {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--git-added);
+}
+
+.commit-card-status.error {
+  color: var(--error);
+}
+
+/* --- Notifications : cloche de la barre du haut et menu déroulant ---------- */
+.notif {
+  position: relative;
+}
+
+.notif-bell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text-dim);
+}
+
+.notif-bell:hover,
+.notif-bell[aria-expanded="true"] {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.notif-bell-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.notif-count {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  color: var(--on-primary);
+  background: var(--primary);
+}
+
+.notif-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-height: min(480px, calc(100vh - 80px));
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.55);
+}
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notif-title {
+  flex: 1;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.notif-action {
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.notif-action:hover {
+  color: var(--text-strong);
+  background: var(--bg-hover);
+}
+
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+.notif-empty-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+}
+
+.notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 7px;
+  text-align: left;
+}
+
+.notif-item:hover {
+  background: var(--bg-hover);
+}
+
+.notif-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notif-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.notif-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.notif-item.unread .notif-item-title {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.notif-time {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-label);
+}
+
+/* Type de notification : vert terminé, couleur primaire question, rouge erreur */
+.notif-kind {
+  font-size: 11px;
+  color: var(--git-added);
+}
+
+.notif-kind.question {
+  color: var(--primary);
+}
+
+.notif-kind.error {
+  color: var(--error);
+}
+
+.notif-body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.notif-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+/* Demande d'autorisation d'un agent, dans la conversation */
+.permission-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--git-modified) 45%, var(--border));
+  border-radius: 10px;
+  background: var(--bg-window);
+}
+
+.permission-card:not(.pending) {
+  gap: 6px;
+  padding: 8px 12px;
+  border-color: var(--border);
+}
+
+.permission-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-strong);
+}
+
+.permission-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--git-modified);
+}
+
+.permission-card:not(.pending) .permission-icon {
+  color: var(--text-dim);
+}
+
+.permission-detail {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg-editor);
+}
+
+.permission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.permission-status {
+  font-size: 11.5px;
+  color: var(--git-added);
+}
+
+.permission-status.denied {
+  color: var(--error);
+}
+
+/* --- Réponses des IA en Markdown ---------------------------------------------- */
+.claude-line.assistant:has(.md) {
+  white-space: normal;
+}
+
+.md {
+  overflow-wrap: anywhere;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md blockquote,
+.md .md-pre,
+.md .md-table {
+  margin: 0 0 10px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 16px 0 8px;
+  line-height: 1.3;
+  color: var(--text-strong);
+}
+
+.md h1 {
+  font-size: 17px;
+}
+
+.md h2 {
+  font-size: 15px;
+}
+
+.md h3,
+.md h4 {
+  font-size: 13.5px;
+}
+
+.md ul,
+.md ol {
+  padding-left: 20px;
+}
+
+.md li {
+  margin: 3px 0;
+}
+
+.md li > p {
+  margin: 0;
+}
+
+.md strong {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.md a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.md :not(pre) > code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-code);
+  font-size: 0.92em;
+  color: var(--text-strong);
+  background: var(--bg-active);
+}
+
+.md .md-pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-editor);
+}
+
+.md .md-pre code {
+  font-family: var(--font-code);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+  color: var(--syntax-text);
+}
+
+/* Langage du bloc de code, en tête */
+.md .md-pre code[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-label);
+}
+
+.md blockquote {
+  padding-left: 12px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-dim);
+}
+
+.md hr {
+  margin: 14px 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+.md .md-table {
+  overflow-x: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.md th,
+.md td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.md th {
+  font-weight: 600;
+  color: var(--text-strong);
+  background: var(--bg-window);
+}
+
+.md input[type="checkbox"] {
+  margin: 0 6px 0 0;
+  accent-color: var(--primary);
+}
+
+/* Image collée dans le champ d'un agent : miniature dans la pastille */
+.attachment.with-preview {
+  height: 32px;
+  padding-left: 3px;
+}
+
+.attachment-preview {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+
+/* Résumé de la conversation dans l'en-tête de l'agent : prend la place libre, coupé si trop long */
+.agent-pane-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+/* Dossier (branche du worktree) : collé à droite, avant l'IA */
+.agent-pane-header .agent-pane-branch {
+  flex-shrink: 0;
+  max-width: 30%;
+}
+
+/* Bouton d'envoi devenu Stop pendant que l'agent répond */
+.composer-send.stop .composer-icon {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+/* Cartes du fil (autorisation, commit) : décalées comme le texte des messages,
+   le point et le trait du fil restent dehors, dans la marge, au lieu de passer sous la carte. */
+.permission-card.tl,
+.commit-card.tl {
+  margin-left: 20px;
+}
+
+.permission-card.tl::before,
+.commit-card.tl::before {
+  /* Aligné sur le titre de la carte (bordure + marge intérieure du haut) */
+  top: calc(var(--card-pad-top, 13px) + 0.75em - 3.5px);
+  left: -20px;
+}
+
+.permission-card:not(.pending).tl::before {
+  --card-pad-top: 9px;
+}
+
+.permission-card.tl:has(+ .tl)::after,
+.commit-card.tl:has(+ .tl)::after {
+  top: calc(var(--card-pad-top, 13px) + 0.75em + 6px);
+  left: -17px;
+}
+
+.permission-card:not(.pending).tl:has(+ .tl)::after {
+  --card-pad-top: 9px;
+}
+
+/* Choix de l'effort dans le champ de saisie, à côté du modèle */
+.composer-effort-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--text-dim);
+}
+
+/* Effort : icône éclair ; avec Ultracode, l'éclair et le niveau passent en ocre */
+.composer-effort-icon.ultra {
+  color: var(--git-modified);
+}
+
+.composer-effort-label.ultra {
+  color: var(--git-modified);
+}
+
+.composer-ultra {
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--git-modified);
+  background: color-mix(in srgb, var(--git-modified) 14%, transparent);
+}
+
+.popover-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border-line);
+}
+
+.popover-checkbox {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+}
+
+.popover-checkbox.checked {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.popover-checkbox-icon {
+  width: 10px;
+  height: 10px;
+  color: var(--on-primary);
 }

@@ -1,0 +1,26 @@
+/**
+ * Symbole FAST (logo v2), version normale de la charte : l'écran de la mascotte
+ * et ses deux yeux lime. Dessiné en ligne pour suivre le thème : le cadre clair
+ * (--logo-frame) n'apparaît que sur les thèmes sombres, comme fast-symbol-dark ;
+ * il est transparent sur un thème clair (fast-symbol-light).
+ * Sources : src/assets/logo/fast-symbol-*.svg.
+ */
+export function FastSymbol({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="40 40 176 176" aria-label="FAST" role="img">
+      <path
+        d="M88,40 H168 A48,48 0 0 1 216,88 V168 A48,48 0 0 1 168,216 H88 A48,48 0 0 1 40,168 V88 A48,48 0 0 1 88,40 Z"
+        fill="#0B0C10"
+      />
+      <path
+        d="M88,40 H168 A48,48 0 0 1 216,88 V168 A48,48 0 0 1 168,216 H88 A48,48 0 0 1 40,168 V88 A48,48 0 0 1 88,40 Z M88,62 H168 A26,26 0 0 1 194,88 V168 A26,26 0 0 1 168,194 H88 A26,26 0 0 1 62,168 V88 A26,26 0 0 1 88,62 Z"
+        fillRule="evenodd"
+        style={{ fill: "var(--logo-frame)" }}
+      />
+      <path
+        d="M127.03,104.43 L118.23,137.27 A11.0,11.0 0 0 1 96.97,131.57 L105.77,98.73 A11.0,11.0 0 0 1 127.03,104.43 Z M165.03,104.43 L156.23,137.27 A11.0,11.0 0 0 1 134.97,131.57 L143.77,98.73 A11.0,11.0 0 0 1 165.03,104.43 Z"
+        fill="#C6FF3D"
+      />
+    </svg>
+  );
+}

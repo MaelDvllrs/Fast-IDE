@@ -166,3 +166,13 @@ pub fn claude_fallback_paths() -> Vec<PathBuf> {
     }
     paths
 }
+
+/// `cmd.exe` plutôt que PowerShell : `npm`, `pnpm`… y passent par leurs `.cmd`,
+/// sans dépendre de la politique d'exécution des scripts PowerShell.
+pub fn command_launch(command: &str) -> super::ShellLaunch {
+    super::ShellLaunch {
+        program: "cmd.exe".into(),
+        args: vec!["/D".into(), "/S".into(), "/C".into(), command.into()],
+        prints_banner: false,
+    }
+}

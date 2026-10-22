@@ -10,9 +10,15 @@ const dir = new URL("../src/components/fileIcons/", import.meta.url);
 const mapping = JSON.parse(readFileSync(new URL("mapping.json", dir), "utf8"));
 const require = createRequire(import.meta.url);
 const sets = {};
-/** Charge un jeu Iconify installé via @iconify-json/<jeu>. */
+/** Charge un jeu Iconify installé via @iconify-json/<jeu>, ou le jeu « fast »
+ *  (icônes propres à FAST, ex. la mascotte) de fileIcons/fast-icons.json. */
 const loadSet = (prefix) =>
-  (sets[prefix] ??= JSON.parse(readFileSync(require.resolve(`@iconify-json/${prefix}/icons.json`), "utf8")));
+  (sets[prefix] ??= JSON.parse(
+    readFileSync(
+      prefix === "fast" ? new URL("fast-icons.json", dir) : require.resolve(`@iconify-json/${prefix}/icons.json`),
+      "utf8",
+    ),
+  ));
 
 const names = [
   ...new Set([

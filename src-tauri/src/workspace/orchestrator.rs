@@ -13,6 +13,14 @@
 //!    la fautive ; tâche seule → Claude corrige, nouvel essai ;
 //! 5. les agents inactifs sont mis à jour sur la nouvelle branche principale.
 //!
+//! Tous les agents, Prime compris, ont leur worktree : seule cette boucle modifie
+//! la branche principale, et personne n'attend personne. Prime (l'agent principal)
+//! reste prioritaire : sa tâche est fusionnée la première du lot, donc en cas de
+//! conflit ce sont les autres qui s'adaptent à son travail.
+//!
+//! (Sans git, les agents partagent le dossier du projet : l'attente de l'agent
+//! qui y travaille, plus bas, ne sert plus que dans ce cas.)
+//!
 //! Le pipeline est du code Rust déterministe ; Claude n'intervient que sur un
 //! conflit ou un build cassé. Chaque étape est envoyée à l'interface
 //! (`orchestrator://event`), dans la conversation de l'agent concerné.
@@ -22,7 +30,7 @@ use std::{path::Path, sync::atomic::Ordering};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
-use super::{build, ensure_integration, entry, git, idle_isolated, AgentEntry, WorkspaceState};
+use super::{build, busy_root_agent, ensure_integration, entry, git, idle_isolated, set_committing, AgentEntry, WorkspaceState};
 use crate::{
     claude,
     error::{AppError, AppResult},
@@ -85,22 +93,33 @@ fn report_all(app: &AppHandle, tasks: &[Task], stage: &'static str, status: Stat
 
 /// Fin d'une tâche d'agent : commit immédiat (agent isolé), puis mise en file.
 pub fn task_finished(app: AppHandle, agent_id: String, summary: Option<String>) {
+    // Marqué tout de suite (avant que l'interface ne repasse l'agent en inactif) :
+    // l'orchestrateur ne touche pas la branche principale avant le commit de l'agent du projet.
+    set_committing(&app.state::<WorkspaceState>(), &agent_id, true);
     tauri::async_runtime::spawn(async move {
         let state = app.state::<WorkspaceState>();
-        let Some(agent) = entry(&state, &agent_id) else { return };
+        let Some(agent) = entry(&state, &agent_id) else {
+            set_committing(&state, &agent_id, false);
+            return;
+        };
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
         let task = Task { run_id: format!("{agent_id}-{stamp}"), agent_id, agent, summary };
 
-        // Le worktree d'un agent isolé n'est touché que par lui : commit sans attendre la file.
-        // Le dossier du projet, lui, est partagé avec l'intégration : il est committé dans la boucle.
-        if task.agent.branch.is_some() {
-            match commit(&app, &task).await {
-                Ok(true) => {}
-                Ok(false) => return,
-                Err(err) => {
-                    report(&app, &task, "commit", Status::Error, "Could not commit", Some(err.to_string()));
-                    return;
-                }
+        // Commit immédiat, sans attendre la file. Pour l'agent du dossier projet, le
+        // verrou garantit que l'orchestrateur ne met pas la branche principale à jour en même temps.
+        let committed = if task.agent.branch.is_none() {
+            let _root = state.root_lock.lock().await;
+            commit(&app, &task).await
+        } else {
+            commit(&app, &task).await
+        };
+        set_committing(&state, &task.agent_id, false);
+        match committed {
+            Ok(true) => {}
+            Ok(false) => return,
+            Err(err) => {
+                report(&app, &task, "commit", Status::Error, "Could not commit", Some(err.to_string()));
+                return;
             }
         }
 
@@ -140,26 +159,21 @@ async fn process_queue(app: &AppHandle, state: &WorkspaceState) {
 }
 
 async fn integrate_batch(app: &AppHandle, state: &WorkspaceState, root: &Path, batch: Vec<Task>) -> AppResult<()> {
-    // Agent du dossier projet : son commit va directement sur la branche principale.
-    let mut tasks = Vec::new();
-    for task in batch {
-        report(app, &task, "queue", Status::Done, "Integration started", None);
-        if task.agent.branch.is_none() && !commit(app, &task).await? {
-            continue;
-        }
-        tasks.push(task);
-    }
-    if tasks.is_empty() {
-        return Ok(());
+    // Tout est déjà committé (l'agent du dossier projet l'est sur la branche principale).
+    // Prime d'abord (puis l'ordre de création) : son travail est intégré avant celui des autres.
+    let mut tasks = batch;
+    tasks.sort_by_key(|t| t.agent.index);
+    for task in &tasks {
+        report(app, task, "queue", Status::Done, "Integration started", None);
     }
 
     let main = git::current_branch(root).await?;
     let integration = ensure_integration(root).await?;
 
-    if !try_integrate(app, root, &integration, &main, &tasks, tasks.len() == 1).await? && tasks.len() > 1 {
+    if !try_integrate(app, state, root, &integration, &main, &tasks, tasks.len() == 1).await? && tasks.len() > 1 {
         // Le lot ne build pas : chaque tâche seule, pour isoler la fautive.
         for task in &tasks {
-            try_integrate(app, root, &integration, &main, std::slice::from_ref(task), true).await?;
+            try_integrate(app, state, root, &integration, &main, std::slice::from_ref(task), true).await?;
         }
     }
 
@@ -175,6 +189,7 @@ async fn integrate_batch(app: &AppHandle, state: &WorkspaceState, root: &Path, b
 /// corrige un build cassé, l'échec est signalé). Rend `true` si c'est intégré.
 async fn try_integrate(
     app: &AppHandle,
+    state: &WorkspaceState,
     root: &Path,
     integration: &Path,
     main: &str,
@@ -205,41 +220,81 @@ async fn try_integrate(
     }
     let merged: Vec<Task> = merged.into_iter().cloned().collect();
 
-    if let Some(command) = build::command(root) {
-        let label = if merged.len() > 1 { format!("Building {} tasks ({command})", merged.len()) } else { format!("Building ({command})") };
-        report_all(app, &merged, "build", Status::Running, &label, None);
-        let (ok, output) = build::run(integration, &command).await?;
-        if !ok {
-            if !final_try {
-                // Le lot sera repris tâche par tâche : pas encore un échec définitif.
-                report_all(app, &merged, "build", Status::Running, "Batch build failed, retrying alone", None);
-                return Ok(false);
-            }
-            match fix_build(integration, &command, &output).await? {
-                Ok(()) => {}
-                Err(output) => {
-                    report_all(app, &merged, "build", Status::Error, "Build failed", Some(&output));
-                    return Ok(false);
-                }
-            }
-        }
-        report_all(app, &merged, "build", Status::Done, "Build passed", None);
+    if !build_step(app, root, integration, &merged, final_try).await? {
+        return Ok(false);
     }
 
-    // La branche principale avance sur le résultat intégré et testé.
-    report_all(app, &merged, "merge", Status::Running, &format!("Updating {main}"), None);
-    if !git::is_ancestor(root, main, INTEGRATION_BRANCH).await {
-        let detail = format!("{main} changed during the integration; the next finished task will retry.");
-        report_all(app, &merged, "merge", Status::Error, &format!("Could not update {main}"), Some(&detail));
-        return Ok(false);
+    // La branche principale avance sur le résultat intégré et testé — jamais
+    // pendant que l'agent du dossier projet travaille (il a la priorité).
+    for _ in 0..MAX_MAIN_RESYNCS {
+        if let Some(lead) = busy_root_agent(state, root) {
+            report_all(app, &merged, "merge", Status::Running, &format!("Waiting for {lead} to finish"), None);
+            while busy_root_agent(state, root).is_some() {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+        let root_guard = state.root_lock.lock().await;
+        // L'agent du projet n'a rien committé entre-temps : fast-forward direct.
+        if git::is_ancestor(root, main, INTEGRATION_BRANCH).await {
+            report_all(app, &merged, "merge", Status::Running, &format!("Updating {main}"), None);
+            let ff = git::run(root, &["merge", "--ff-only", INTEGRATION_BRANCH]).await?;
+            drop(root_guard);
+            if !ff.ok {
+                let detail = format!(
+                    "{}\nCommit or stash the changes in the project folder, then finish another task.",
+                    ff.stderr.trim()
+                );
+                report_all(app, &merged, "merge", Status::Error, &format!("Could not update {main}"), Some(&detail));
+                return Ok(false);
+            }
+            report_all(app, &merged, "merge", Status::Done, &format!("Merged into {main}"), None);
+            return Ok(true);
+        }
+        drop(root_guard);
+
+        // La branche principale a avancé (commit de l'agent du projet) : on l'intègre
+        // d'abord — sa version l'emporte en cas de conflit — puis on rebuild.
+        report_all(app, &merged, "sync", Status::Running, &format!("Syncing with the latest {main}"), None);
+        if let Err(err) = merge_branch(integration, main, main).await {
+            report_all(app, &merged, "sync", Status::Error, &format!("Could not sync with {main}"), Some(&err.to_string()));
+            return Ok(false);
+        }
+        report_all(app, &merged, "sync", Status::Done, &format!("Synced with the latest {main}"), None);
+        if !build_step(app, root, integration, &merged, true).await? {
+            return Ok(false);
+        }
     }
-    let ff = git::run(root, &["merge", "--ff-only", INTEGRATION_BRANCH]).await?;
-    if !ff.ok {
-        let detail = format!("{}\nCommit or stash the changes in the project folder, then finish another task.", ff.stderr.trim());
-        report_all(app, &merged, "merge", Status::Error, &format!("Could not update {main}"), Some(&detail));
-        return Ok(false);
+    let detail = format!("{main} kept changing; the next finished task will retry.");
+    report_all(app, &merged, "merge", Status::Error, &format!("Could not update {main}"), Some(&detail));
+    Ok(false)
+}
+
+/// Nombre de fois où l'on réintègre une branche principale qui a bougé avant d'abandonner.
+const MAX_MAIN_RESYNCS: usize = 3;
+
+/// Build dans le worktree d'intégration. `final_try` : Claude corrige un build
+/// cassé et l'échec est signalé ; sinon un échec laisse reprendre tâche par tâche.
+async fn build_step(app: &AppHandle, root: &Path, integration: &Path, merged: &[Task], final_try: bool) -> AppResult<bool> {
+    let Some(command) = build::command(root) else { return Ok(true) };
+    let label = if merged.len() > 1 {
+        format!("Building {} tasks ({command})", merged.len())
+    } else {
+        format!("Building ({command})")
+    };
+    report_all(app, merged, "build", Status::Running, &label, None);
+    let (ok, output) = build::run(integration, &command).await?;
+    if !ok {
+        if !final_try {
+            // Le lot sera repris tâche par tâche : pas encore un échec définitif.
+            report_all(app, merged, "build", Status::Running, "Batch build failed, retrying alone", None);
+            return Ok(false);
+        }
+        if let Err(output) = fix_build(integration, &command, &output).await? {
+            report_all(app, merged, "build", Status::Error, "Build failed", Some(&output));
+            return Ok(false);
+        }
     }
-    report_all(app, &merged, "merge", Status::Done, &format!("Merged into {main}"), None);
+    report_all(app, merged, "build", Status::Done, "Build passed", None);
     Ok(true)
 }
 
@@ -266,7 +321,9 @@ async fn merge_branch(integration: &Path, branch: &str, main: &str) -> AppResult
     let prompt = format!(
         "A git merge of the branch `{branch}` into `{main}` stopped on conflicts in these files:\n{}\n\n\
          Resolve every conflict: keep the intent of both sides, remove all conflict markers \
-         (<<<<<<<, =======, >>>>>>>) and leave the code compiling. Edit the files only; do not run git commands.",
+         (<<<<<<<, =======, >>>>>>>) and leave the code compiling. When both sides change the same code in \
+         incompatible ways, the `{main}` side (ours) has priority: it holds the main branch and the work already \
+         integrated, including Prime's, the lead agent. Keep its version and adapt the other change to it. Edit the files only; do not run git commands.",
         conflicts.iter().map(|f| format!("- {f}")).collect::<Vec<_>>().join("\n")
     );
     let resolved = claude::run_once(integration, &prompt).await;

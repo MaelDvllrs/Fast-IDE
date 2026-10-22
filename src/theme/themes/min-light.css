@@ -1,0 +1,91 @@
+/* Thème « Min Light », d'après le thème VS Code Min (Miguel Solorio) :
+   interface claire et monochrome, accent noir, code sobre. Premier thème clair :
+   il redéfinit aussi les logos des IA (sombres) et la palette du terminal. */
+:root[data-theme="min-light"] {
+  color-scheme: light;
+
+  /* Fonds */
+  --bg-app: #ececec; /* fond général, derrière les fenêtres */
+  --bg-window: #f6f6f6;
+  --bg-explorer: #f6f6f6; /* barre latérale du thème d'origine */
+  --bg-composer: var(--bg-editor);
+  --bg-terminal: #ffffff;
+  --bg-editor: #ffffff; /* éditeur du thème d'origine */
+  --bg-editor-header: #f6f6f6;
+  --border-window: #e0e0e0;
+  --border-line: #e9e9e9;
+  --bg-elevated: #ffffff;
+  --bg-hover: #eeeeee; /* sélection des listes du thème d'origine */
+  --bg-active: #e0e0e0;
+  --selection: #0000001a;
+
+  --border: #e9e9e9;
+  --border-strong: #d0d0d0;
+
+  /* Texte */
+  --text: #424242;
+  --text-strong: #212121;
+  --text-dim: #757575;
+  --text-label: #a0a0a0;
+  --text-tree: #757575;
+  --text-explorer: var(--text-dim);
+  --text-agent: var(--text);
+  --timeline: var(--border-strong);
+  --timeline-dot: var(--text-label);
+
+  /* Couleur primaire : le noir des éléments actifs du thème d'origine */
+  --primary: #212121;
+  --primary-soft: color-mix(in srgb, var(--primary) 8%, transparent);
+  --on-primary: #ffffff;
+
+  /* Couleurs fonctionnelles (assombries pour rester lisibles sur fond clair) */
+  --error: #d32f2f;
+  --git-added: #22863a;
+  --git-modified: #b08800;
+  --git-deleted: #d32f2f;
+  --git-renamed: #1976d2;
+  --git-conflict: #d32f2f;
+  --logo: #212121;
+  /* Symbole FAST sur fond clair (charte v2) : sans cadre */
+  --logo-frame: transparent;
+
+  /* Code (éditeur) */
+  --line-number: #cccccc;
+  --syntax-text: #24292e;
+  --syntax-keyword: #d32f2f;
+  --syntax-name: #24292e;
+  --syntax-property: #1976d2;
+  --syntax-function: #6f42c1;
+  --syntax-constant: #1976d2;
+  --syntax-definition: #6f42c1;
+  --syntax-type: #6f42c1;
+  --syntax-number: #1976d2;
+  --syntax-operator: #d32f2f;
+  --syntax-special: #ff9800;
+  --syntax-comment: #a8a9ab;
+  --syntax-comment-style: normal;
+  --syntax-string: #22863a;
+  --syntax-heading: #6f42c1;
+  --syntax-tag: #22863a;
+  --syntax-attribute: #6f42c1;
+  --syntax-attribute-style: normal;
+  --syntax-invalid: #cd3131;
+
+  /* Terminal : palette ANSI du thème d'origine (celle d'xterm est faite pour un fond sombre) */
+  --ansi-black: #333333;
+  --ansi-red: #d32f2f;
+  --ansi-green: #77cc00;
+  --ansi-yellow: #f29718;
+  --ansi-blue: #6871ff;
+  --ansi-magenta: #9966cc;
+  --ansi-cyan: #4dbf99;
+  --ansi-white: #7e7e7e;
+  --ansi-bright-black: #a1a1a1;
+  --ansi-bright-red: #d6656a;
+  --ansi-bright-green: #a3d900;
+  --ansi-bright-yellow: #e7c547;
+  --ansi-bright-blue: #6871ff;
+  --ansi-bright-magenta: #a37acc;
+  --ansi-bright-cyan: #57d9ad;
+  --ansi-bright-white: #424242;
+}

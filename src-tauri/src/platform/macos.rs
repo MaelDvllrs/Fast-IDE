@@ -69,3 +69,9 @@ pub fn claude_fallback_paths() -> Vec<PathBuf> {
     paths.push(PathBuf::from("/usr/local/bin/claude"));
     paths
 }
+
+/// Shell de connexion de l'utilisateur : même PATH que dans son terminal (nvm, Homebrew…).
+pub fn command_launch(command: &str) -> super::ShellLaunch {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    super::ShellLaunch { program: shell, args: vec!["-l".into(), "-c".into(), command.into()], prints_banner: false }
+}

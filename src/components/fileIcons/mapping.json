@@ -1,6 +1,5 @@
 {
   "$comment": "Icônes du jeu logos (https://www.shadcn.io/icons/logos). Après modification : npm run icons. Ordre de priorité : configFiles, puis configPrefixes, puis extensions.",
-
   "configFiles": {
     "package.json": "nodejs-icon",
     "package-lock.json": "nodejs-icon",
@@ -45,7 +44,6 @@
     ".editorconfig": "editorconfig",
     "claude.md": "claude-icon"
   },
-
   "configPrefixes": {
     "tsconfig": "typescript-icon",
     "jsconfig": "javascript",
@@ -75,7 +73,6 @@
     "compose.yaml": "docker-icon",
     "compose.yml": "docker-icon"
   },
-
   "extensions": {
     "ts": "typescript-icon",
     "mts": "typescript-icon",
@@ -140,7 +137,6 @@
     "tf": "terraform-icon",
     "vim": "vim"
   },
-
   "$uiIconsComment": "Icônes d'interface d'autres jeux Iconify, au format jeu:icône (paquet @iconify-json/<jeu> requis).",
   "uiIcons": [
     "material-symbols:folder-outline-rounded",
@@ -180,14 +176,43 @@
     "lucide:git-merge",
     "lucide:hammer",
     "lucide:refresh-cw",
-    "lucide:x"
+    "lucide:x",
+    "lucide:github",
+    "lucide:arrow-down",
+    "lucide:minus",
+    "lucide:cloud-upload",
+    "lucide:lock",
+    "lucide:copy",
+    "lucide:external-link",
+    "lucide:log-out",
+    "lucide:download",
+    "lucide:folder-git-2",
+    "lucide:user",
+    "lucide:settings",
+    "simple-icons:claude",
+    "simple-icons:openai",
+    "simple-icons:googlegemini",
+    "lucide:arrow-left-right",
+    "lucide:sparkles",
+    "fast:mascot",
+    "fast:claude-app",
+    "fast:openai-app",
+    "fast:gemini-app",
+    "lucide:calendar",
+    "lucide:info",
+    "lucide:gauge",
+    "lucide:circle-dollar-sign",
+    "lucide:play",
+    "lucide:square",
+    "lucide:rotate-ccw",
+    "lucide:mic",
+    "lucide:bell",
+    "lucide:zap"
   ],
-
   "$strokeWidthsComment": "Épaisseur de trait imposée par jeu d'icônes (Lucide est dessiné à 2 par défaut).",
   "strokeWidths": {
     "lucide": 1.25
   },
-
   "$brandColorsComment": "Couleur de marque des logos d'une seule couleur sombre, sinon invisibles sur fond sombre. Le générateur refuse un tel logo sans couleur ici.",
   "brandColors": {
     "rust": "#F74C00",

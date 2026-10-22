@@ -1,5 +1,4 @@
-// Source vectorielle de l'icône de l'app : nette à toutes les échelles d'affichage.
-import appIcon from "../assets/app-icon.svg";
+import { FastSymbol } from "../components/FastSymbol";
 import { MenuBar as Menus } from "../components/MenuBar";
 import { appWindow } from "../lib/ipc";
 import type { ITerminalOptions } from "@xterm/xterm";
@@ -43,7 +42,7 @@ export function WindowControls() {
 export function MenuBar({ menus }: { menus: Menu[] }) {
   return (
     <div className="app-menubar">
-      <img className="app-logo" src={appIcon} alt="" draggable={false} />
+      <FastSymbol className="app-logo" />
       <Menus menus={menus} />
     </div>
   );

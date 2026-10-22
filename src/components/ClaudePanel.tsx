@@ -1,15 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CLAUDE_CODE, type Attachment } from "../agents/providers";
+import { extractCommitMessage, parseCommand, withUltracode, type AgentCommand } from "../agents/commands";
+import { CLAUDE_CODE, type Attachment, EFFORTS } from "../agents/providers";
 import {
   agents as agentsApi,
   claude,
+  scm,
   type AgentWorkspace,
   type ClaudeMessage,
   type ClaudeStatus,
   type OrchestratorStatus,
 } from "../lib/ipc";
+import {
+  addUsage,
+  limitReached,
+  onEffortChangeRequest,
+  onSystemPromptChangeRequest,
+  onFocusAgent,
+  onModelChangeRequest,
+  onNewAgentRequest,
+  openAgentSettings,
+  syncAgents,
+  totalTokens,
+  updateAgent,
+  useAgentRoster,
+} from "../lib/agentRoster";
+import { excerpt, notify, trailingQuestion } from "../lib/notifications";
+import {
+  beginProject,
+  loadProjectAgents,
+  MAX_SAVED_ITEMS,
+  saveAgent,
+  setAgentOrder,
+  type SavedAgent,
+  type SavedProject,
+} from "../lib/projectAgents";
 import { runInTerminal } from "../lib/terminalBus";
 import { AgentMascot } from "./AgentMascot";
+import { Markdown } from "./Markdown";
+import { compact } from "./AgentOverview";
 import { Composer } from "./Composer";
 import { UiIcon } from "./fileIcons";
 
@@ -19,45 +47,49 @@ interface Props {
   activeFile: string | null;
   /** Largeur en px, réglée par la poignée de redimensionnement. */
   width: number;
-  /** Mode agentic : la fenêtre occupe tout l'espace de travail. */
+  /** Mode Vibe (choisi dans la barre du haut) : la fenêtre occupe tout l'espace de travail. */
   expanded: boolean;
-  onToggleExpanded: () => void;
-}
-
-type ExpandProps = Pick<Props, "expanded" | "onToggleExpanded">;
-type HeaderProps = ExpandProps & { busy: boolean };
-
-/** Bascule du mode agentic (fenêtre agrandie). */
-function ExpandButton({ expanded, onToggleExpanded }: ExpandProps) {
-  const label = expanded ? "Exit agentic mode" : "Agentic mode";
-  return (
-    <button className="title-icon-button end" title={label} aria-label={label} aria-pressed={expanded} onClick={onToggleExpanded}>
-      <UiIcon name={expanded ? "lucide:minimize-2" : "lucide:maximize-2"} className="title-icon" />
-    </button>
-  );
 }
 
 /** En-tête avant l'ouverture des agents (installation, connexion). */
-function ClaudeHeader({ busy, ...expand }: HeaderProps) {
+function ClaudeHeader({ busy }: { busy: boolean }) {
   return (
     <header className="panel-header">
       <span className="panel-title">Claude Code</span>
       {busy && <span className="spinner">●</span>}
-      <ExpandButton {...expand} />
     </header>
   );
 }
 
-/** Couleurs de contour des mascottes, attribuées aux agents dans l'ordre. */
-const AGENT_COLORS = ["#b3a42b", "#61afef", "#c678dd", "#98c379", "#e5707a", "#56b6c2", "#d19a66"];
+/** Couleurs de contour des mascottes, attribuées aux agents dans l'ordre.
+ *  Le premier agent prend la couleur primaire du thème (elle suit le thème). */
+const AGENT_COLORS = ["var(--primary)", "#61afef", "#c678dd", "#98c379", "#e5707a", "#56b6c2", "#d19a66"];
 
 interface Agent {
   id: string;
-  /** Ordre de création : 0 travaille dans le projet, les suivants dans un worktree. */
+  /** Ordre de création : 0 = Prime, prioritaire à l'intégration ; chacun a son worktree. */
   index: number;
   name: string;
   color: string;
+  /** État enregistré lors d'une session précédente, à restaurer. */
+  saved?: SavedAgent;
 }
+
+/** Noms des agents dans l'ordre de création : Prime est l'agent principal et a
+ *  la priorité ; au-delà de 10, les noms secondaires reviennent numérotés (« Nova 2 »). */
+const AGENT_NAMES = ["Prime", "Nova", "Atlas", "Echo", "Onyx", "Neo", "Apex", "Orion", "Pulse", "Flux"];
+const SECONDARY_NAMES = AGENT_NAMES.slice(1);
+
+const agentName = (n: number) => {
+  if (n < AGENT_NAMES.length) return AGENT_NAMES[n];
+  const k = n - 1;
+  return `${SECONDARY_NAMES[k % SECONDARY_NAMES.length]} ${Math.floor(k / SECONDARY_NAMES.length) + 1}`;
+};
+
+/** IA disponibles pour les agents ; chacune n'apparaît qu'une fois dans l'en-tête du mode Vibe. */
+const SESSION_AIS: { id: string; label: string; icon: "fast:claude-app" }[] = [
+  { id: "claude-code", label: "Claude Code", icon: "fast:claude-app" },
+];
 
 /** Colonnes de la grille du mode large selon le nombre d'agents :
  *  1 → 1, 2 → 2, 3 → 3, 4 → 2×2, 5-6 → 3×2, 7-9 → 3×3… */
@@ -69,22 +101,59 @@ const gridColumns = (count: number) => (count <= 3 ? count : Math.ceil(Math.sqrt
  * en glissant leur en-tête. Les mêmes sessions servent aux deux modes (elles ne
  * sont jamais remontées), et un agent masqué continue de travailler.
  */
-function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: string | null } & ExpandProps) {
+function AgentTabs({
+  cwd,
+  activeFile,
+  expanded,
+  saved,
+}: {
+  cwd: string;
+  activeFile: string | null;
+  expanded: boolean;
+  saved: SavedProject | null;
+}) {
   // Le n-ième agent créé : nom et couleur suivent l'ordre de création.
   const agentAt = (n: number): Agent => ({
     id: crypto.randomUUID(),
     index: n,
-    name: `Agent ${n + 1}`,
+    name: agentName(n),
     color: AGENT_COLORS[n % AGENT_COLORS.length],
   });
-  const [agents, setAgents] = useState<Agent[]>(() => [agentAt(0)]);
-  // Agents déjà créés (le premier inclus) ; n'augmente qu'à l'ajout d'un agent.
-  const created = useRef(1);
+  const [agents, setAgents] = useState<Agent[]>(() =>
+    saved?.agents.length ? saved.agents.map((a) => ({ ...agentAt(a.index), saved: a })) : [agentAt(0)],
+  );
+  // Prochain indice de création (après les agents restaurés) ; n'augmente qu'à l'ajout d'un agent.
+  const created = useRef(Math.max(0, ...agents.map((a) => a.index)) + 1);
+  // Ordre des onglets enregistré pour la prochaine ouverture ; un agent fermé est oublié.
+  useEffect(() => setAgentOrder(agents.map((a) => a.index)), [agents]);
   const makeAgent = () => agentAt(created.current++);
   const [activeId, setActiveId] = useState(agents[0].id);
+  // Liste partagée (panneau Agents) : suit les onglets, vidée à la fermeture du projet.
+  useEffect(
+    () =>
+      syncAgents(
+        agents.map(({ id, name, color, saved: s }) => ({
+          id,
+          name,
+          color,
+          // Agent restauré : sa consommation, sa limite et son résumé dès sa création.
+          initial: s && { tokenLimit: s.tokenLimit, summary: s.summary, usage: s.usage, turns: s.turns, cost: s.cost },
+        })),
+      ),
+    [agents],
+  );
+  useEffect(() => () => syncAgents([]), []);
+  // Clic sur un agent du panneau Agents : son onglet passe au premier plan.
+  useEffect(() => onFocusAgent(setActiveId), []);
   const [working, setWorking] = useState<Record<string, boolean>>({});
   // Espace de travail de chaque agent, préparé côté Rust (worktree à partir du 2e).
   const [workspaces, setWorkspaces] = useState<Record<string, AgentWorkspace | { error: string }>>({});
+  // Dossier et branche de chaque agent, affichés dans sa fenêtre (panneau Agents).
+  useEffect(() => {
+    for (const [id, workspace] of Object.entries(workspaces)) {
+      if ("cwd" in workspace) updateAgent(id, { cwd: workspace.cwd, branch: workspace.branch });
+    }
+  }, [workspaces]);
   const requested = useRef(new Set<string>());
 
   useEffect(() => {
@@ -99,13 +168,17 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
   }, [agents, cwd]);
   // Glisser-déposer d'un panneau de la grille : agent déplacé et panneau survolé.
   const [drag, setDrag] = useState<{ id: string; over: string | null } | null>(null);
-  const grid = expand.expanded;
+  const grid = expanded;
 
   const add = () => {
     const agent = makeAgent();
     setAgents((prev) => [...prev, agent]);
     setActiveId(agent.id);
   };
+  // Bouton « Add agent » du panneau Agents. `add` change à chaque rendu : passé par une ref.
+  const addRef = useRef(add);
+  addRef.current = add;
+  useEffect(() => onNewAgentRequest(() => addRef.current()), []);
 
   const close = (id: string) => {
     agentsApi.removeWorkspace(id).catch(() => {});
@@ -128,8 +201,7 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
 
   const setAgentWorking = useCallback((id: string, busy: boolean) => {
     setWorking((prev) => (prev[id] === busy ? prev : { ...prev, [id]: busy }));
-    // L'orchestrateur ne met à jour que les agents inactifs.
-    agentsApi.setBusy(id, busy).catch(() => {});
+    updateAgent(id, { working: busy });
   }, []);
 
   // Pointeur plutôt que le glisser-déposer HTML5 : sous Windows, Tauri intercepte
@@ -153,18 +225,59 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
     onPointerCancel: () => setDrag(null),
   });
 
-  const columns = gridColumns(agents.length);
+  // Agent agrandi dans le mode large : il prend toute la place, les autres
+  // restent montés (et continuent de travailler) mais masqués.
+  const [maximizedId, setMaximizedId] = useState<string | null>(null);
+  const maximized = grid && maximizedId !== null && agents.some((a) => a.id === maximizedId) ? maximizedId : null;
+  const columns = maximized ? 1 : gridColumns(agents.length);
+  const roster = useAgentRoster();
+  // Consommation, limite et résumé de chaque agent : enregistrés avec sa conversation.
+  useEffect(() => {
+    for (const entry of roster) {
+      const agent = agents.find((a) => a.id === entry.id);
+      if (!agent) continue;
+      saveAgent(agent.index, {
+        name: entry.name,
+        tokenLimit: entry.tokenLimit,
+        summary: entry.summary,
+        usage: entry.usage,
+        turns: entry.turns,
+        cost: entry.cost,
+      });
+    }
+  }, [roster, agents]);
+  const sessionTokens = roster.reduce((sum, a) => sum + totalTokens(a.usage), 0);
+  const summaries = Object.fromEntries(roster.map((a) => [a.id, a.summary]));
 
   return (
     <>
       {grid ? (
         <header className="panel-header agent-grid-toolbar">
-          <span className="panel-title">Agents</span>
-          <span className="agent-count">{agents.length}</span>
-          <button className="agent-tab-add" title="New agent" aria-label="New agent" onClick={add}>
-            <UiIcon name="lucide:plus" className="agent-tab-add-icon" />
+          {/* Tous les agents ouverts, mascottes légèrement superposées */}
+          <div className="agent-stack" aria-label={`${agents.length} agents`}>
+            {agents.map((agent) => (
+              <span key={agent.id} className="agent-stack-item" title={agent.name}>
+                <AgentMascot color={agent.color} working={!!working[agent.id]} size={14} />
+              </span>
+            ))}
+          </div>
+          <button className="agent-add-button" onClick={add}>
+            <UiIcon name="lucide:plus" className="agent-add-icon" />
+            Add agent
           </button>
-          <ExpandButton {...expand} />
+          {/* Jetons consommés depuis l'ouverture de l'app, par IA (seul Claude Code pour l'instant) */}
+          <span className="session-ais">
+            {SESSION_AIS.map((ai) => (
+              <span
+                key={ai.id}
+                className="session-ai"
+                title={`${ai.label}: ${sessionTokens.toLocaleString("en-US")} tokens this session`}
+              >
+                <UiIcon name={ai.icon} className="session-ai-icon" />
+                {compact(sessionTokens)}
+              </span>
+            ))}
+          </span>
         </header>
       ) : (
         // Mêmes onglets que la fenêtre code (classes tab-bar / tab), mascotte à la place de l'icône
@@ -205,7 +318,6 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
               <UiIcon name="lucide:plus" className="agent-tab-add-icon" />
             </button>
           </div>
-          <ExpandButton {...expand} />
         </header>
       )}
 
@@ -224,13 +336,18 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
               key={agent.id}
               className={classes.join(" ")}
               data-agent-id={agent.id}
-              hidden={!grid && agent.id !== activeId}
+              hidden={grid ? maximized !== null && agent.id !== maximized : agent.id !== activeId}
               onPointerDownCapture={() => setActiveId(agent.id)}
             >
               {grid && (
                 <header className="agent-pane-header" title="Drag to move" {...dragHandlers(agent.id)}>
                   <AgentMascot color={agent.color} working={!!working[agent.id]} size={16} />
                   <span className="agent-pane-name">{agent.name}</span>
+                  {/* Sur quoi travaille l'agent, en une ligne, à côté de son nom */}
+                  <span className="agent-pane-summary" title={summaries[agent.id] ?? undefined}>
+                    {summaries[agent.id] ?? "No task yet"}
+                  </span>
+                  {/* Dossier de l'agent (branche de son worktree), à gauche de son IA */}
                   {(() => {
                     const workspace = workspaces[agent.id];
                     return workspace && "branch" in workspace && workspace.branch ? (
@@ -240,6 +357,33 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
                       </span>
                     ) : null;
                   })()}
+                  {/* IA puis réglages de l'agent, à droite de l'en-tête */}
+                  <span className="agent-pane-ai" title="Claude Code">
+                    <UiIcon name="fast:claude-app" className="agent-pane-ai-icon" />
+                    Claude Code
+                  </span>
+                  <button
+                    className="agent-pane-settings"
+                    title={`${agent.name} settings`}
+                    aria-label={`${agent.name} settings`}
+                    onClick={() => openAgentSettings(agent.id)}
+                  >
+                    <UiIcon name="lucide:settings" className="agent-pane-settings-icon" />
+                  </button>
+                  {agents.length > 1 && (
+                    <button
+                      className="agent-pane-settings"
+                      title={maximized === agent.id ? "Restore" : "Maximize"}
+                      aria-label={maximized === agent.id ? `Restore ${agent.name}` : `Maximize ${agent.name}`}
+                      aria-pressed={maximized === agent.id}
+                      onClick={() => setMaximizedId(maximized === agent.id ? null : agent.id)}
+                    >
+                      <UiIcon
+                        name={maximized === agent.id ? "lucide:minimize-2" : "lucide:maximize-2"}
+                        className="agent-pane-settings-icon"
+                      />
+                    </button>
+                  )}
                   {agents.length > 1 && (
                     <button
                       className="tab-close agent-pane-close"
@@ -269,13 +413,13 @@ function AgentTabs({ cwd, activeFile, ...expand }: { cwd: string; activeFile: st
 type Line = { kind: "user" | "assistant" | "info" | "error"; text: string; at?: number };
 
 /** Heure d'un message au format du système (ex. « 14:32 »). */
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" });
 
 function MessageTime({ at }: { at?: number }) {
   if (!at) return null;
   const date = new Date(at);
   return (
-    <time className="message-time" dateTime={date.toISOString()} title={date.toLocaleString()}>
+    <time className="message-time" dateTime={date.toISOString()} title={date.toLocaleString("en-US")}>
       {timeFormat.format(date)}
     </time>
   );
@@ -286,8 +430,7 @@ const POLL_MS = 3000;
 
 /** Panneau Claude Code : vérifie que la CLI est installée et connectée à un
  *  abonnement, propose sinon de l'installer ou de se connecter, puis ouvre la session. */
-export function ClaudePanel({ cwd, activeFile, width, expanded, onToggleExpanded }: Props) {
-  const expand = { expanded, onToggleExpanded };
+export function ClaudePanel({ cwd, activeFile, width, expanded }: Props) {
   const [status, setStatus] = useState<ClaudeStatus | null>(null);
   // Une installation ou une connexion a été lancée : on revérifie régulièrement.
   const [waiting, setWaiting] = useState(false);
@@ -300,6 +443,21 @@ export function ClaudePanel({ cwd, activeFile, width, expanded, onToggleExpanded
   useEffect(refresh, [refresh]);
 
   const ready = status?.installed && status.loggedIn;
+
+  // Agents et conversations du projet (`.fast/agents.json`), rouverts tels quels.
+  const [saved, setSaved] = useState<SavedProject | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    setSaved(undefined);
+    loadProjectAgents(cwd).then((project) => {
+      if (cancelled) return;
+      beginProject(cwd, project);
+      setSaved(project);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cwd]);
 
   useEffect(() => {
     if (!waiting || ready) return;
@@ -324,10 +482,19 @@ export function ClaudePanel({ cwd, activeFile, width, expanded, onToggleExpanded
       style={expanded ? undefined : { flexBasis: width }}
     >
       {ready ? (
-        <AgentTabs cwd={cwd} activeFile={activeFile} {...expand} />
+        saved === undefined ? (
+          <>
+            <ClaudeHeader busy />
+            <div className="claude-setup">
+              <p className="claude-setup-text">Restoring agents…</p>
+            </div>
+          </>
+        ) : (
+          <AgentTabs cwd={cwd} activeFile={activeFile} expanded={expanded} saved={saved} />
+        )
       ) : (
         <>
-          <ClaudeHeader busy={!status || waiting} {...expand} />
+          <ClaudeHeader busy={!status || waiting} />
           <div className="claude-setup">
             {!status ? (
               <p className="claude-setup-text">Checking Claude Code…</p>
@@ -398,7 +565,12 @@ function AgentPaneBody({
   return (
     <ClaudeSession
       agentId={agent.id}
+      index={agent.index}
+      saved={agent.saved}
       name={agent.name}
+      color={agent.color}
+      branch={workspace.branch}
+      isolated={!workspace.notice}
       cwd={workspace.cwd}
       notice={workspace.notice}
       activeFile={activeFile}
@@ -409,9 +581,19 @@ function AgentPaneBody({
 
 interface SessionProps {
   agentId: string;
+  /** Ordre de création de l'agent : clé de son état enregistré. */
+  index: number;
+  /** Conversation d'une session précédente, à restaurer. */
+  saved?: SavedAgent;
+  /** Couleur de la mascotte de l'agent. */
+  color: string;
+  /** Branche git de l'agent (ou branche principale pour l'agent du projet). */
+  branch: string | null;
+  /** L'agent travaille dans son propre worktree. */
+  isolated: boolean;
   /** Avertissement sur l'espace de travail (ex. git absent : pas d'isolation). */
   notice: string | null;
-  /** Nom de l'agent, utilisé dans le champ de saisie (« Ask Agent 1 anything… »). */
+  /** Nom de l'agent, utilisé dans le champ de saisie (« Ask Prime anything… »). */
   name: string;
   cwd: string;
   activeFile: string | null;
@@ -426,7 +608,17 @@ type Item =
   | Line
   | { kind: "thinking"; id: string; startedAt: number; endedAt?: number }
   | { kind: "tool"; id: string; name: string; input?: Record<string, unknown>; status: "running" | "done" | "error" }
-  | { kind: "step"; id: string; stage: string; label: string; status: OrchestratorStatus; detail: string | null };
+  | { kind: "step"; id: string; stage: string; label: string; status: OrchestratorStatus; detail: string | null }
+  | { kind: "commit"; id: string; message: string }
+  | {
+      kind: "permission";
+      /** `request_id` de Claude Code, à renvoyer avec la réponse. */
+      id: string;
+      sessionId: string;
+      tool: string;
+      input: Record<string, unknown>;
+      status: "pending" | "allowed" | "denied";
+    };
 
 interface Block {
   type: string;
@@ -444,22 +636,57 @@ interface StreamEvent {
   delta?: { type?: string; text?: string };
 }
 
-function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange }: SessionProps) {
+function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice, name, cwd, activeFile, onWorkingChange }: SessionProps) {
   // Session active, `null` tant que le processus n'est pas prêt ou après sa fin.
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<Item[]>(() => restoreItems(saved?.items));
   // Réponse en cours d'écriture, alimentée morceau par morceau ; remplacée par
   // le message complet quand il arrive.
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [model, setModel] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(saved?.model ?? null);
+  const [effort, setEffort] = useState<string | null>(saved?.effort ?? null);
+  // Ultracode activé : le mot-clé est ajouté à chaque message (sans relancer la session).
+  const [ultracode, setUltracode] = useState(saved?.ultracode ?? false);
+  // `undefined` : jamais défini (option non transmise) ; `null` : retiré.
+  const [systemPrompt, setSystemPrompt] = useState<string | null | undefined>(saved?.systemPrompt);
+  // Limite de jetons fixée dans la fenêtre de l'agent : atteinte, plus de nouvelle demande.
+  const rosterEntry = useAgentRoster().find((a) => a.id === agentId);
+  const overLimit = !!rosterEntry && limitReached(rosterEntry);
   // Modèle annoncé par Claude Code au démarrage de la session (ex. claude-opus-5-5).
   const [resolvedModel, setResolvedModel] = useState<string | null>(null);
   // Conversation côté Claude Code : reprise quand on change de modèle.
-  const conversation = useRef<string | null>(null);
+  const conversation = useRef<string | null>(saved?.conversation ?? null);
   // Dernière demande de l'utilisateur : sert de message de commit à l'orchestrateur.
   const lastPrompt = useRef<string | null>(null);
+  // Tour arrêté par l'utilisateur (bouton Stop) : sa fin n'est ni une erreur ni une tâche terminée.
+  const interrupted = useRef(false);
+  // « Allow all » choisi : les demandes d'autorisation suivantes sont acceptées d'office.
+  const allowAll = useRef(false);
+  // Demandes de l'utilisateur, pour le résumé en une ligne de la conversation.
+  const prompts = useRef<string[]>(saved?.prompts ?? []);
+
+  // Conversation et réglages enregistrés à chaque changement (écriture regroupée).
+  useEffect(() => {
+    saveAgent(index, {
+      name,
+      conversation: conversation.current,
+      model,
+      effort,
+      ultracode,
+      systemPrompt,
+      prompts: prompts.current.slice(-20),
+      items: items.slice(-MAX_SAVED_ITEMS),
+    });
+  }, [index, name, items, model, effort, ultracode, systemPrompt]);
+  const summarySeq = useRef(0);
+  // Commande « / » du tour en cours, et texte de la réponse (pour /commit).
+  const turnCommand = useRef<AgentCommand | null>(null);
+  const turnText = useRef("");
   const bottom = useRef<HTMLDivElement>(null);
+
+  const updateItems = (match: (item: Item) => boolean, patch: (item: Item) => Item) =>
+    setItems((prev) => prev.map((item) => (match(item) ? patch(item) : item)));
 
   // Chaque message texte reçoit l'heure système au moment où il s'affiche.
   const push = (...l: Item[]) =>
@@ -472,6 +699,22 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
   const workingChanged = useRef(onWorkingChange);
   workingChanged.current = onWorkingChange;
   useEffect(() => workingChanged.current(working), [working]);
+  // Modèle affiché dans le panneau Agents : celui choisi, ou celui annoncé par Claude Code.
+  const modelLabel = model === null ? resolvedModel : (provider.models.find((m) => m.id === model)?.label ?? model);
+  // Lu par le gestionnaire des messages de Claude (installé une seule fois par session).
+  const modelLabelRef = useRef(modelLabel);
+  modelLabelRef.current = modelLabel;
+  useEffect(() => updateAgent(agentId, { model: modelLabel, modelId: model }), [agentId, model, modelLabel]);
+  useEffect(() => updateAgent(agentId, { effort }), [agentId, effort]);
+  useEffect(() => updateAgent(agentId, { systemPrompt: systemPrompt ?? null }), [agentId, systemPrompt]);
+  useEffect(() => {
+    if (overLimit) push({ kind: "info", text: "Token limit reached: raise it in the agent's options to continue." });
+  }, [overLimit]);
+  // L'orchestrateur ne met à jour que les agents inactifs. Seul Claude compte :
+  // les étapes de l'orchestrateur ne doivent pas bloquer leur propre intégration.
+  useEffect(() => {
+    agentsApi.setBusy(agentId, busy).catch(() => {});
+  }, [agentId, busy]);
 
   useEffect(() => {
     if (notice) push({ kind: "info", text: notice });
@@ -538,6 +781,22 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
         case "stream_event":
           onStreamEvent(msg.event as StreamEvent | undefined);
           return;
+        case "control_request": {
+          // Claude Code demande l'autorisation de lancer une commande, d'écrire hors du projet…
+          const request = msg.request as { subtype?: string; tool_name?: string; input?: Record<string, unknown> } | undefined;
+          const requestId = String(msg.request_id ?? "");
+          if (request?.subtype !== "can_use_tool" || !requestId) return;
+          const tool = request.tool_name ?? "tool";
+          const input = request.input ?? {};
+          if (allowAll.current) {
+            claude.permission(id, requestId, true, input).catch(() => {});
+            return;
+          }
+          push({ kind: "permission", id: requestId, sessionId: id, tool, input, status: "pending" });
+          const action = provider.describeTool(tool, input).running;
+          notify({ agentId, agentName: name, agentColor: color, kind: "question", title: `${name} needs your approval`, body: excerpt(action) });
+          return;
+        }
         case "system":
           if (typeof msg.session_id === "string") conversation.current = msg.session_id;
           if (msg.subtype === "init" && typeof msg.model === "string") {
@@ -552,6 +811,7 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
           for (const block of (msg.message as { content?: Block[] } | undefined)?.content ?? []) {
             if (block.type === "text" && block.text) {
               setDraft(null);
+              turnText.current += `${block.text}\n`;
               push({ kind: "assistant", text: block.text });
             } else if (block.type === "tool_use" && block.id) {
               const toolId = block.id;
@@ -573,7 +833,7 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
               const toolId = block.tool_use_id;
               update(
                 (item) => item.kind === "tool" && item.id === toolId,
-                (item) => ({ ...item, status: block.is_error ? "error" : "done" }),
+                (item) => (item.kind === "tool" ? { ...item, status: block.is_error ? "error" : "done" } : item),
               );
             }
           }
@@ -582,9 +842,42 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
           endThinking();
           setDraft(null);
           setBusy(false);
-          if (msg.is_error) push({ kind: "error", text: String(msg.result ?? "Error") });
-          // Tâche terminée : l'orchestrateur ramène le travail sur la branche principale.
-          else agentsApi.taskFinished(agentId, lastPrompt.current).catch(() => {});
+          addUsage(agentId, msg, provider.formatModelName, modelLabelRef.current);
+          if (interrupted.current) {
+            interrupted.current = false;
+            turnCommand.current = null;
+            push({ kind: "info", text: "Stopped" });
+            return;
+          }
+          {
+            const command = turnCommand.current;
+            turnCommand.current = null;
+            // Notification : erreur, question posée à la fin de la réponse, ou tâche terminée.
+            const reply = turnText.current.trim();
+            if (!msg.is_error) summarize(reply);
+            const question = trailingQuestion(reply);
+            const who = { agentId, agentName: name, agentColor: color };
+            if (msg.is_error) {
+              notify({ ...who, kind: "error", title: `${name} ran into an error`, body: excerpt(String(msg.result ?? "")) });
+            } else if (question) {
+              notify({ ...who, kind: "question", title: `${name} has a question`, body: excerpt(question) });
+            } else {
+              const task = lastPrompt.current ? excerpt(lastPrompt.current, 80) : "";
+              notify({ ...who, kind: "done", title: `${name} finished${task ? `: ${task}` : " a task"}`, body: excerpt(reply) });
+            }
+            if (msg.is_error) {
+              push({ kind: "error", text: String(msg.result ?? "Error") });
+            } else if (command?.kind === "commit") {
+              // /commit : le message proposé, à valider avant le commit.
+              const message = extractCommitMessage(turnText.current);
+              if (message) push({ kind: "commit", id: crypto.randomUUID(), message });
+              else push({ kind: "info", text: "No commit message was proposed." });
+            } else if (!command?.readOnly) {
+              // Tâche terminée : l'orchestrateur ramène le travail sur la branche principale.
+              // (Les commandes en lecture seule ne modifient rien : pas de commit automatique.)
+              agentsApi.taskFinished(agentId, lastPrompt.current).catch(() => {});
+            }
+          }
           return;
       }
     };
@@ -611,7 +904,14 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
     });
 
     // acceptEdits : l'agent modifie les fichiers sans demander ; tout est versionné par git.
-    const started = claude.start(id, cwd, { permissionMode: "acceptEdits", model, resume: conversation.current }).then(
+    const started = claude.start(id, cwd, {
+      permissionMode: "acceptEdits",
+      model,
+      effort,
+      // Une fois défini (même retiré), transmis à chaque démarrage pour remplacer l'ancien.
+      systemPrompt: systemPrompt === undefined ? null : (systemPrompt ?? ""),
+      resume: conversation.current,
+    }).then(
       () => {
         if (!disposed) setSessionId(id);
       },
@@ -627,8 +927,8 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
       // Attendre la fin du démarrage pour que l'arrêt ne le précède jamais.
       started.then(() => claude.stop(id)).catch(() => {});
     };
-    // Changer de modèle relance la session sur la même conversation.
-  }, [cwd, model]);
+    // Changer de modèle, d'effort ou de prompt système relance la session sur la même conversation.
+  }, [cwd, model, effort, systemPrompt]);
 
   const changeModel = (next: string | null) => {
     if (next === model) return;
@@ -639,6 +939,40 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
     setResolvedModel(null);
     setModel(next);
   };
+  const changeEffort = (next: string | null) => {
+    if (next === effort) return;
+    const label = EFFORTS.find((e) => e.id === next)?.label ?? next;
+    push({ kind: "info", text: `Effort: ${label}` });
+    setBusy(false);
+    setEffort(next);
+  };
+  const changeEffortRef = useRef(changeEffort);
+  changeEffortRef.current = changeEffort;
+  useEffect(
+    () => onEffortChangeRequest((id, next) => id === agentId && changeEffortRef.current(next)),
+    [agentId],
+  );
+
+  const changeSystemPrompt = (next: string | null) => {
+    if (next === (systemPrompt ?? null)) return;
+    push({ kind: "info", text: next ? "System prompt updated" : "System prompt removed" });
+    setBusy(false);
+    setSystemPrompt(next);
+  };
+  const changeSystemPromptRef = useRef(changeSystemPrompt);
+  changeSystemPromptRef.current = changeSystemPrompt;
+  useEffect(
+    () => onSystemPromptChangeRequest((id, next) => id === agentId && changeSystemPromptRef.current(next)),
+    [agentId],
+  );
+
+  // Choix du modèle depuis la fenêtre de l'agent (panneau Agents).
+  const changeModelRef = useRef(changeModel);
+  changeModelRef.current = changeModel;
+  useEffect(
+    () => onModelChangeRequest((id, next) => id === agentId && changeModelRef.current(next)),
+    [agentId],
+  );
 
   // Accolades obligatoires : scrollIntoView renvoie une Promise dans les
   // WebView récentes, et React refuse tout retour d'effet qui n'est pas une fonction.
@@ -655,8 +989,53 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
       (item) => (item.kind === "tool" && item.status === "running") || (item.kind === "thinking" && !item.endedAt),
     );
 
+  /**
+   * Résumé en une ligne de la conversation (affiché en mode Vibe), écrit par un
+   * modèle rapide après chaque tour à partir des dernières demandes et de la réponse.
+   */
+  const summarize = (reply: string) => {
+    const seq = ++summarySeq.current;
+    const requests = prompts.current.slice(-4).map((p) => `User: ${p.slice(0, 400)}`).join("\n");
+    const prompt = `Summarize in one short line (max 12 words, no final period, in English) what this AI coding agent is working on and in which part of the project. Reply with the line only.
+
+${requests}
+Agent: ${reply.slice(0, 1500)}`;
+    claude
+      .quick(prompt)
+      .then((line) => {
+        // Une réponse plus ancienne arrivée en retard ne remplace pas la dernière.
+        const summary = line.split("\n")[0].replace(/^["'\s]+|["'.\s]+$/g, "");
+        if (seq === summarySeq.current && summary) updateAgent(agentId, { summary });
+      })
+      .catch(() => {});
+  };
+
+  /** Arrête le tour en cours ; la conversation continue au message suivant. */
+  const stop = () => {
+    if (!sessionId || interrupted.current) return;
+    interrupted.current = true;
+    // Les demandes d'autorisation en attente n'attendent plus de réponse.
+    updateItems(
+      (x) => x.kind === "permission" && x.status === "pending",
+      (x) => (x.kind === "permission" ? { ...x, status: "denied" } : x),
+    );
+    claude.interrupt(sessionId).catch((err) => {
+      interrupted.current = false;
+      push({ kind: "error", text: String(err) });
+    });
+  };
+
   const submit = async (text: string, attachments: Attachment[]) => {
-    if (!sessionId) return;
+    if (!sessionId || overLimit) return;
+    interrupted.current = false;
+    prompts.current.push(text);
+    // « /review … » : le prompt préparé de la commande, complété par le reste du texte.
+    const parsed = parseCommand(text);
+    turnCommand.current = parsed?.command ?? null;
+    turnText.current = "";
+    const base = parsed ? parsed.command.prompt(parsed.args) : text;
+    // /ultracode contient déjà le mot-clé ; l'option l'ajoute aux autres messages.
+    const prompt = ultracode && parsed?.command.name !== "ultracode" ? withUltracode(base) : base;
     lastPrompt.current = text;
     setBusy(true);
     push({
@@ -664,7 +1043,7 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
       text: attachments.length ? `${text}\nContext: ${attachments.map((a) => a.name).join(", ")}` : text,
     });
     try {
-      await claude.send(sessionId, provider.formatPrompt(text, attachments));
+      await claude.send(sessionId, provider.formatPrompt(prompt, attachments));
     } catch (err) {
       setBusy(false);
       push({ kind: "error", text: String(err) });
@@ -674,6 +1053,10 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
   return (
     <>
       <div className="claude-log">
+        {/* Avant le premier message : la mascotte de l'agent se présente */}
+        {!items.some((item) => item.kind === "user") && (
+          <AgentIntro name={name} color={color} branch={branch} isolated={isolated} working={working} />
+        )}
         {items.map((item, i) =>
           item.kind === "thinking" ? (
             <ThinkingRow key={item.id} startedAt={item.startedAt} endedAt={item.endedAt} />
@@ -681,6 +1064,33 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
             <ToolRow key={item.id} name={item.name} input={item.input} status={item.status} />
           ) : item.kind === "step" ? (
             <StepRow key={item.id} stage={item.stage} label={item.label} status={item.status} detail={item.detail} />
+          ) : item.kind === "permission" ? (
+            <PermissionCard
+              key={item.id}
+              item={item}
+              onAnswer={(allow, all) => {
+                if (all) allowAll.current = true;
+                updateItems(
+                  (x) => x.kind === "permission" && x.id === item.id,
+                  (x) => (x.kind === "permission" ? { ...x, status: allow ? "allowed" : "denied" } : x),
+                );
+                claude.permission(item.sessionId, item.id, allow, item.input).catch((err) => push({ kind: "error", text: String(err) }));
+                // « Allow all » : les autres demandes encore en attente sont acceptées aussi.
+                if (all) {
+                  for (const other of items) {
+                    if (other.kind === "permission" && other.status === "pending" && other.id !== item.id) {
+                      claude.permission(other.sessionId, other.id, true, other.input).catch(() => {});
+                    }
+                  }
+                  updateItems(
+                    (x) => x.kind === "permission" && x.status === "pending",
+                    (x) => (x.kind === "permission" ? { ...x, status: "allowed" } : x),
+                  );
+                }
+              }}
+            />
+          ) : item.kind === "commit" ? (
+            <CommitCard key={item.id} cwd={cwd} message={item.message} canPush={!isolated} />
           ) : (
             // Réponses, étapes et erreurs ont leur point sur le fil (classe « tl ») ; les
             // messages de l'utilisateur et les infos (« Session ready »…) restent au-dessus.
@@ -691,7 +1101,7 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
               </div>
             ) : (
               <div key={i} className={item.kind === "info" ? "claude-line info" : `claude-line ${item.kind} tl`}>
-                {item.text}
+                {item.kind === "assistant" ? <Markdown text={item.text} /> : item.text}
                 {item.kind === "assistant" && <MessageTime at={item.at} />}
               </div>
             )
@@ -699,7 +1109,7 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
         )}
         {draft !== null && (
           <div className="claude-line assistant streaming tl">
-            {draft}
+            <Markdown text={draft} />
             <span className="caret" aria-hidden="true" />
           </div>
         )}
@@ -718,10 +1128,20 @@ function ClaudeSession({ agentId, notice, name, cwd, activeFile, onWorkingChange
           // Seul le modèle par défaut a besoin d'être précisé ; il est réinitialisé à chaque changement.
           resolvedModel={model === null ? resolvedModel : null}
           onModelChange={changeModel}
+          efforts={EFFORTS}
+          effort={effort}
+          onEffortChange={changeEffort}
+          ultracode={ultracode}
+          onUltracodeChange={(on) => {
+            setUltracode(on);
+            push({ kind: "info", text: on ? "Ultracode on: multi-agent orchestration for every message" : "Ultracode off" });
+          }}
           root={cwd}
           activeFile={activeFile}
-          disabled={!running}
-          placeholder={running ? `Ask ${name} anything…` : `Starting ${name}…`}
+          disabled={!running || overLimit}
+          busy={busy}
+          onStop={stop}
+          placeholder={overLimit ? "Token limit reached" : running ? `Ask ${name} anything…` : `Starting ${name}…`}
           onSubmit={submit}
         />
       </div>
@@ -808,4 +1228,158 @@ function StepRow({ stage, label, status, detail }: { stage: string; label: strin
     );
   }
   return <div className={`activity ${status} tl`}>{row}</div>;
+}
+
+/** Présentation d'un agent dans sa conversation vide : mascotte + message. */
+function AgentIntro({
+  name,
+  color,
+  branch,
+  isolated,
+  working,
+}: {
+  name: string;
+  color: string;
+  branch: string | null;
+  isolated: boolean;
+  working: boolean;
+}) {
+  return (
+    <div className="agent-intro">
+      <AgentMascot color={color} working={working} size={56} />
+      <div className="agent-intro-title">Hi, I'm {name}!</div>
+      <p className="agent-intro-text">
+        {isolated ? (
+          <>
+            I work in my own copy of the project{branch && <> on <code>{branch}</code></>}, so I never get in the way of
+            the other agents. When I finish a task, my work is built and merged automatically.
+          </>
+        ) : (
+          <>
+            I work directly in your project{branch && <> on <code>{branch}</code></>}. Ask me to explain, fix or build
+            anything — I can read and edit your files.
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Commit proposé par /commit : message modifiable, puis commit (et push pour
+ * l'agent du projet) par la gestion Git de FAST, comme le panneau Git.
+ */
+function CommitCard({ cwd, message, canPush }: { cwd: string; message: string; canPush: boolean }) {
+  const [text, setText] = useState(message);
+  const [state, setState] = useState<{ kind: "idle" | "busy" | "done" | "error"; text?: string }>({ kind: "idle" });
+
+  const commit = async (push: boolean) => {
+    setState({ kind: "busy", text: push ? "Committing and pushing…" : "Committing…" });
+    try {
+      const hash = await scm.commit(cwd, text);
+      if (push) await scm.push(cwd);
+      setState({ kind: "done", text: push ? `Committed ${hash} and pushed` : `Committed ${hash}` });
+    } catch (e) {
+      setState({ kind: "error", text: String(e) });
+    }
+  };
+
+  const locked = state.kind === "busy" || state.kind === "done";
+
+  return (
+    <div className="commit-card tl">
+      <div className="commit-card-title">
+        <UiIcon name="lucide:git-commit-horizontal" className="commit-card-icon" />
+        Proposed commit
+      </div>
+      <textarea
+        className="commit-card-message"
+        value={text}
+        disabled={locked}
+        rows={Math.min(8, Math.max(2, text.split("\n").length))}
+        spellCheck={false}
+        onChange={(e) => setText(e.target.value)}
+      />
+      <div className="commit-card-actions">
+        {state.text && <span className={state.kind === "error" ? "commit-card-status error" : "commit-card-status"}>{state.text}</span>}
+        {state.kind !== "done" && (
+          <>
+            {canPush && (
+              <button className="secondary-button" disabled={locked || !text.trim()} onClick={() => commit(true)}>
+                Commit & Push
+              </button>
+            )}
+            <button className="primary-button" disabled={locked || !text.trim()} onClick={() => commit(false)}>
+              <UiIcon name="lucide:check" className="primary-button-icon" />
+              Commit
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type PermissionItem = Extract<Item, { kind: "permission" }>;
+
+/**
+ * Demande d'autorisation d'un agent (commande à lancer, fichier hors du
+ * projet…) : l'agent attend la réponse. « Allow all » vaut pour la suite de
+ * la session de cet agent.
+ */
+function PermissionCard({ item, onAnswer }: { item: PermissionItem; onAnswer: (allow: boolean, all: boolean) => void }) {
+  const tool = provider.describeTool(item.tool, item.input);
+  const command = typeof item.input.command === "string" ? item.input.command : null;
+  const path = typeof item.input.file_path === "string" ? item.input.file_path : null;
+  const detail = command ?? path ?? null;
+
+  return (
+    <div className={`permission-card ${item.status} tl`}>
+      <div className="permission-title">
+        <UiIcon name={item.status === "pending" ? "lucide:circle-alert" : tool.icon} className="permission-icon" />
+        {item.status === "pending" ? `Wants to ${tool.running.charAt(0).toLowerCase()}${tool.running.slice(1)}` : tool.running}
+      </div>
+      {detail && <code className="permission-detail">{detail}</code>}
+      {item.status === "pending" ? (
+        <div className="permission-actions">
+          <button className="secondary-button" onClick={() => onAnswer(false, false)}>
+            Deny
+          </button>
+          <button className="secondary-button" onClick={() => onAnswer(true, true)}>
+            Allow all this session
+          </button>
+          <button className="primary-button" onClick={() => onAnswer(true, false)}>
+            <UiIcon name="lucide:check" className="primary-button-icon" />
+            Allow
+          </button>
+        </div>
+      ) : (
+        <div className={`permission-status ${item.status}`}>{item.status === "allowed" ? "Allowed" : "Denied"}</div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Conversation enregistrée → éléments à afficher. Ce qui était en cours à la
+ * fermeture est clos (outils, réflexion), les demandes d'autorisation sans
+ * réponse sont expirées (la session qui les attendait n'existe plus).
+ */
+function restoreItems(saved: unknown[] | undefined): Item[] {
+  if (!saved?.length) return [];
+  const items = (saved as Item[]).flatMap((item): Item[] => {
+    switch (item.kind) {
+      case "tool":
+        return [item.status === "running" ? { ...item, status: "done" } : item];
+      case "thinking":
+        return [item.endedAt ? item : { ...item, endedAt: item.startedAt }];
+      case "permission":
+        return [item.status === "pending" ? { ...item, status: "denied" } : item];
+      case "step":
+        return item.status === "running" ? [] : [item];
+      default:
+        return [item];
+    }
+  });
+  return [...items, { kind: "info", text: "Conversation restored", at: Date.now() }];
 }

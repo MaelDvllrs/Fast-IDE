@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "FAST",
+  "productName": "Fast",
   "version": "0.1.0",
   "identifier": "dev.vibeide.app",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "FAST",
+        "title": "Fast",
         "width": 1400,
         "height": 900,
         "minWidth": 900,

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Menu } from "../lib/menu";
 
-/** Menus déroulants (Fichier, Options…). Une fois un menu ouvert, survoler
+/** Menus déroulants (File, Settings…). Une fois un menu ouvert, survoler
  *  un autre libellé bascule dessus, comme dans les menus natifs. */
 export function MenuBar({ menus }: { menus: Menu[] }) {
   const [open, setOpen] = useState<number | null>(null);

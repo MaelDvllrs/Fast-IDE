@@ -13,6 +13,8 @@ export interface AgentModel {
 export interface Attachment {
   path: string;
   name: string;
+  /** Aperçu d'une image collée (URL locale du navigateur), affiché dans le champ. */
+  preview?: string;
 }
 
 /** Description lisible d'une action de l'IA (outil), en cours puis terminée. */
@@ -35,6 +37,16 @@ export interface AgentProvider {
   /** Construit le message envoyé à l'IA à partir du texte et du contexte joint. */
   formatPrompt: (text: string, attachments: Attachment[]) => string;
 }
+
+/** Niveaux d'effort de Claude Code (option `--effort`) : réflexion avant de répondre. */
+export const EFFORTS: { id: string | null; label: string; description?: string }[] = [
+  { id: null, label: "Default", description: "Set for your account" },
+  { id: "low", label: "Low", description: "Fastest answers" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "xhigh", label: "Extra high" },
+  { id: "max", label: "Max", description: "Deepest thinking" },
+];
 
 export const CLAUDE_CODE: AgentProvider = {
   id: "claude-code",
@@ -95,6 +107,7 @@ function describeClaudeTool(name: string, input: Record<string, unknown> | undef
     case "LS":
       return target(["Listing", "Listed"], fileName(i.path), "lucide:folder-search");
     case "Bash":
+    case "PowerShell":
       return target(["Running", "Ran"], short(i.description ?? i.command), "lucide:terminal");
     case "WebFetch":
       return target(["Fetching", "Fetched"], short(i.url), "lucide:globe");

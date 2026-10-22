@@ -12,6 +12,8 @@ use crate::{error::AppResult, platform};
 pub struct ProjectConfig {
     /// Commande de build imposée ; `None` = détection automatique, `""` = pas de build.
     pub build_command: Option<String>,
+    /// Commande du bouton Run choisie pour ce projet ; `None` = détection automatique.
+    pub run_command: Option<String>,
 }
 
 fn config_path(root: &Path) -> std::path::PathBuf {

@@ -1,18 +1,31 @@
 import { useEffect, useRef, useState } from "react";
-import { project, settings } from "../lib/ipc";
+import { signOut, useGithubAccount } from "../lib/githubAccount";
+import { project, settings, type RunCandidate } from "../lib/ipc";
+import { RUN_CONFIG_EVENT } from "../lib/runner";
 import { THEMES, applyTheme, currentTheme } from "../theme";
 import { UiIcon } from "./fileIcons";
+import { GithubSignIn } from "./GithubSignIn";
 
-type Section = "appearance" | "project";
+export type PreferencesSection = "appearance" | "project" | "accounts";
+type Section = PreferencesSection;
 
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: "appearance", label: "Appearance", icon: "lucide:palette" },
   { id: "project", label: "Project", icon: "lucide:hammer" },
+  { id: "accounts", label: "Accounts", icon: "lucide:github" },
 ];
 
 /** Fenêtre de préférences : navigation par sections à gauche, réglages à droite. */
-export function PreferencesDialog({ onClose, root }: { onClose: () => void; root: string | null }) {
-  const [section, setSection] = useState<Section>("appearance");
+export function PreferencesDialog({
+  onClose,
+  root,
+  initialSection = "appearance",
+}: {
+  onClose: () => void;
+  root: string | null;
+  initialSection?: Section;
+}) {
+  const [section, setSection] = useState<Section>(initialSection);
   const panel = useRef<HTMLDivElement>(null);
 
   // Échap ferme la fenêtre ; le focus est placé dedans à l'ouverture.
@@ -49,6 +62,7 @@ export function PreferencesDialog({ onClose, root }: { onClose: () => void; root
           </header>
           {section === "appearance" && <AppearanceSettings />}
           {section === "project" && <ProjectSettings root={root} />}
+          {section === "accounts" && <AccountSettings />}
         </section>
       </div>
     </div>
@@ -159,6 +173,102 @@ function ProjectSettings({ root }: { root: string | null }) {
         onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
       />
       <div className="setting-description">Leave empty to use the detected command. Saved in .fast/config.json.</div>
+
+      <RunSettings root={root} />
+    </div>
+  );
+}
+
+/** Commande du bouton Run (barre du haut) : une des commandes détectées, ou la sienne. */
+function RunSettings({ root }: { root: string }) {
+  const [candidates, setCandidates] = useState<RunCandidate[]>([]);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [custom, setCustom] = useState("");
+
+  useEffect(() => {
+    project.runOptions(root).then(({ candidates, selected }) => {
+      setCandidates(candidates);
+      setSelected(selected);
+      if (selected && !candidates.some((c) => c.command === selected)) setCustom(selected);
+    });
+  }, [root]);
+
+  const choose = (command: string | null) => {
+    setSelected(command);
+    project
+      .setRunCommand(root, command)
+      .then(() => window.dispatchEvent(new Event(RUN_CONFIG_EVENT)))
+      .catch(() => {});
+  };
+  const isCustom = selected !== null && !candidates.some((c) => c.command === selected);
+
+  return (
+    <>
+      <div className="setting-text setting-group">
+        <div className="setting-label">Run command</div>
+        <div className="setting-description">What the Run button in the top bar starts (F5). Output shows in the Run tab.</div>
+      </div>
+
+      <div className="run-options" role="radiogroup" aria-label="Run command">
+        {candidates.map((c) => (
+          <label key={c.command} className="run-option">
+            <input type="radio" name="run-command" checked={selected === c.command} onChange={() => choose(c.command)} />
+            <span className="run-option-label">{c.label}</span>
+            <code className="run-option-command">{c.command}</code>
+          </label>
+        ))}
+        <label className="run-option">
+          <input
+            type="radio"
+            name="run-command"
+            checked={isCustom}
+            onChange={() => custom.trim() && choose(custom.trim())}
+          />
+          <span className="run-option-label">Custom</span>
+          <input
+            className="setting-input run-option-input"
+            value={custom}
+            spellCheck={false}
+            placeholder="e.g. npm run dev -- --port 3000"
+            aria-label="Custom run command"
+            onChange={(e) => setCustom(e.target.value)}
+            onBlur={() => custom.trim() && custom.trim() !== selected && choose(custom.trim())}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+          />
+        </label>
+      </div>
+      {candidates.length === 0 && (
+        <div className="setting-description">No run command detected in this project: type yours above.</div>
+      )}
+    </>
+  );
+}
+
+/** Compte GitHub : utilisé pour push / pull, cloner et publier des dépôts. */
+function AccountSettings() {
+  const { loading, account } = useGithubAccount();
+
+  return (
+    <div className="preferences-body">
+      <div className="setting-text">
+        <div className="setting-label">GitHub</div>
+        <div className="setting-description">Used to push and pull, clone your repositories and publish new ones.</div>
+      </div>
+      {loading ? null : account ? (
+        <div className="account-card">
+          <img className="account-avatar" src={account.avatarUrl} alt="" />
+          <div className="account-text">
+            <div className="account-name">{account.name ?? account.login}</div>
+            <div className="account-login">@{account.login}</div>
+          </div>
+          <button className="secondary-button" onClick={() => signOut().catch(() => {})}>
+            <UiIcon name="lucide:log-out" className="secondary-button-icon" />
+            Sign out
+          </button>
+        </div>
+      ) : (
+        <GithubSignIn />
+      )}
     </div>
   );
 }

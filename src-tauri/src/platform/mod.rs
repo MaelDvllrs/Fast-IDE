@@ -13,10 +13,18 @@ use crate::error::{AppError, AppResult};
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
+mod speech_macos;
+#[cfg(target_os = "macos")]
+use self::speech_macos as speech;
+#[cfg(target_os = "macos")]
 use self::macos as imp;
 
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+mod speech_windows;
+#[cfg(target_os = "windows")]
+use self::speech_windows as speech;
 #[cfg(target_os = "windows")]
 use self::windows as imp;
 
@@ -75,6 +83,20 @@ pub fn claude_install_command() -> &'static str {
 /// installation, `claude` n'est pas encore dans le PATH du shell.
 pub fn claude_login_command(program: &std::path::Path) -> String {
     imp::claude_login_command(program)
+}
+
+/// Démarre la dictée vocale ; `emit` reçoit le texte provisoire, les phrases et la fin.
+pub fn speech_start(emit: impl Fn(crate::speech::SpeechEvent) + Send + Sync + Clone + 'static) -> AppResult<()> {
+    speech::start(emit)
+}
+
+pub fn speech_stop() {
+    speech::stop()
+}
+
+/// Processus qui exécute une ligne de commande dans un pseudo-terminal (bouton Run).
+pub fn command_launch(command: &str) -> ShellLaunch {
+    imp::command_launch(command)
 }
 
 /// Commande qui lance le shell du terminal intégré.

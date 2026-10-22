@@ -8,4 +8,17 @@
   /* Mise en page : fenêtres posées sur le fond général */
   --gap: 0.5rem; /* marge autour de l'app et entre les fenêtres */
   --radius: 10px;
+
+  /* État des fichiers dans le panneau Git (un thème peut les redéfinir) */
+  --git-added: #73c991;
+  --git-modified: #e2c08d;
+  --git-deleted: #e06c75;
+  --git-renamed: #6cb6ff;
+  --git-conflict: #e4676b;
+
+  /* Logos monochromes des IA (Claude, OpenAI, Gemini) : blancs sur fond sombre */
+  --logo: #fff;
+
+  /* Symbole FAST (charte v2) : cadre « Cadre » autour de l'écran sur fond sombre */
+  --logo-frame: #e6e8ee;
 }

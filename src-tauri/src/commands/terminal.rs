@@ -16,8 +16,9 @@ pub fn terminal_start(
     cols: u16,
     rows: u16,
     banner: Option<String>,
+    command: Option<String>,
 ) -> AppResult<()> {
-    terminal::start(app, &state, session_id, StartOptions { cwd, cols, rows, banner })
+    terminal::start(app, &state, session_id, StartOptions { cwd, cols, rows, banner, command })
 }
 
 #[tauri::command(async)]

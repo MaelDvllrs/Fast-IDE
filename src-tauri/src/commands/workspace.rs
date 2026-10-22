@@ -77,7 +77,10 @@ pub fn project_config_get(root: std::path::PathBuf) -> ProjectSettings {
 
 #[tauri::command]
 pub fn project_config_set(root: std::path::PathBuf, config: crate::workspace::build::ProjectConfig) -> AppResult<()> {
-    crate::workspace::build::save_config(&root, &config)
+    // Les préférences ne règlent que le build : le reste du fichier (commande Run…) est gardé.
+    let mut current = crate::workspace::build::load_config(&root);
+    current.build_command = config.build_command;
+    crate::workspace::build::save_config(&root, &current)
 }
 
 /// Réglages du projet, avec la commande de build détectée (pour l'afficher).
@@ -86,4 +89,65 @@ pub fn project_config_set(root: std::path::PathBuf, config: crate::workspace::bu
 pub struct ProjectSettings {
     config: crate::workspace::build::ProjectConfig,
     detected_build_command: Option<String>,
+}
+
+/// Commandes possibles pour le bouton Run, et celle choisie pour ce projet.
+#[tauri::command]
+pub fn project_run_options(root: std::path::PathBuf) -> crate::workspace::run::RunOptions {
+    crate::workspace::run::options(&root)
+}
+
+#[tauri::command]
+pub fn project_run_set(root: std::path::PathBuf, command: Option<String>) -> AppResult<()> {
+    crate::workspace::run::set(&root, command)
+}
+
+/// Fichier collé dans le champ d'un agent (capture d'écran, document) : enregistré
+/// dans `<projet>/.fast/attachments/` (exclu de git) pour que l'agent puisse le lire.
+/// `data` est le contenu encodé en base64. Rend le chemin du fichier.
+#[tauri::command]
+pub fn attachment_save(root: std::path::PathBuf, name: String, data: String) -> AppResult<String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    let bytes = STANDARD
+        .decode(data.as_bytes())
+        .map_err(|_| AppError::msg("the pasted file could not be read"))?;
+    // Nom sûr : sans dossier ni caractère interdit sous Windows.
+    let base = std::path::Path::new(&name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let clean: String = base
+        .chars()
+        .map(|c| if c.is_control() || r#"<>:"/\|?*"#.contains(c) { '_' } else { c })
+        .collect();
+    let clean = if clean.trim().is_empty() { "pasted-file".to_owned() } else { clean };
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let dir = root.join(".fast").join("attachments");
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{stamp}-{clean}"));
+    std::fs::write(&path, bytes)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+/// Agents du projet et leurs conversations (`.fast/agents.json`), pour les
+/// rouvrir au prochain lancement. `None` si rien n'a encore été enregistré.
+#[tauri::command(async)]
+pub fn project_agents_load(root: std::path::PathBuf) -> Option<serde_json::Value> {
+    let text = std::fs::read_to_string(root.join(".fast").join("agents.json")).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// Enregistre les agents du projet ; écrit dans un fichier temporaire puis le
+/// renomme, pour ne jamais laisser un fichier à moitié écrit.
+#[tauri::command(async)]
+pub fn project_agents_save(root: std::path::PathBuf, state: serde_json::Value) -> AppResult<()> {
+    let dir = root.join(".fast");
+    std::fs::create_dir_all(&dir)?;
+    let tmp = dir.join("agents.json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec(&state)?)?;
+    std::fs::rename(&tmp, dir.join("agents.json"))?;
+    Ok(())
 }

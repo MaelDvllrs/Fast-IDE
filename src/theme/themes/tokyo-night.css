@@ -1,0 +1,64 @@
+/* Thème « Tokyo Night », d'après le thème VS Code Tokyo Night (enkia) :
+   bleu nuit, accent bleu, code aux couleurs néon douces. */
+:root[data-theme="tokyo-night"] {
+  color-scheme: dark;
+
+  /* Fonds */
+  --bg-app: #101014; /* fond général, derrière les fenêtres */
+  --bg-window: #16161e;
+  --bg-explorer: #16161e; /* barre latérale du thème d'origine */
+  --bg-composer: var(--bg-editor);
+  --bg-terminal: #16161e;
+  --bg-editor: #1a1b26; /* éditeur du thème d'origine */
+  --bg-editor-header: #16161e;
+  --border-window: #1f2030;
+  --border-line: #101014;
+  --bg-elevated: #1f2335;
+  --bg-hover: #1e202e; /* surlignage de ligne du thème d'origine */
+  --bg-active: #292e42;
+  --selection: #515c7e4d;
+
+  --border: #24283b;
+  --border-strong: #3b4261;
+
+  /* Texte */
+  --text: #a9b1d6;
+  --text-strong: #c0caf5;
+  --text-dim: #787c99;
+  --text-label: #515670;
+  --text-tree: #787c99;
+  --text-explorer: var(--text-dim);
+  --text-agent: var(--text);
+  --timeline: var(--border-strong);
+  --timeline-dot: var(--text-label);
+
+  /* Couleur primaire : le bleu du thème d'origine */
+  --primary: #7aa2f7;
+  --primary-soft: color-mix(in srgb, var(--primary) 14%, transparent);
+  --on-primary: #16161e;
+
+  /* Couleurs fonctionnelles */
+  --error: #f7768e;
+
+  /* Code (éditeur) */
+  --line-number: #363b54;
+  --syntax-text: #a9b1d6;
+  --syntax-keyword: #bb9af7;
+  --syntax-name: #c0caf5;
+  --syntax-property: #7dcfff;
+  --syntax-function: #7aa2f7;
+  --syntax-constant: #ff9e64;
+  --syntax-definition: #c0caf5;
+  --syntax-type: #0db9d7;
+  --syntax-number: #ff9e64;
+  --syntax-operator: #89ddff;
+  --syntax-special: #b4f9f8;
+  --syntax-comment: #565f89;
+  --syntax-comment-style: italic;
+  --syntax-string: #9ece6a;
+  --syntax-heading: #89ddff;
+  --syntax-tag: #f7768e;
+  --syntax-attribute: #bb9af7;
+  --syntax-attribute-style: italic;
+  --syntax-invalid: #ff5370;
+}

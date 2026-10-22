@@ -8,6 +8,7 @@
 //! où l'on build : son cache reste chaud (voir `orchestrator.rs`).
 
 pub mod build;
+pub mod run;
 pub mod git;
 pub mod orchestrator;
 
@@ -29,9 +30,14 @@ pub(crate) struct AgentEntry {
     pub(crate) root: PathBuf,
     pub(crate) name: String,
     pub(crate) cwd: PathBuf,
-    /// Branche de l'agent ; `None` pour l'agent qui travaille dans le projet.
+    /// Branche de l'agent ; `None` seulement sans git (tous partagent alors le projet).
     pub(crate) branch: Option<String>,
+    /// Ordre de création : 0 = Prime, l'agent principal, prioritaire à l'intégration.
+    pub(crate) index: u32,
+    /// Claude travaille sur une tâche (les étapes de l'orchestrateur ne comptent pas).
     pub(crate) busy: bool,
+    /// Tâche terminée dont le commit n'est pas encore fait.
+    pub(crate) committing: bool,
 }
 
 #[derive(Default)]
@@ -41,6 +47,9 @@ pub struct WorkspaceState {
     queue: Mutex<Vec<orchestrator::Task>>,
     /// Une seule boucle d'intégration à la fois : les merges ne se croisent jamais.
     processing: AtomicBool,
+    /// Accès au dossier du projet (branche principale) : le commit de l'agent qui
+    /// y travaille et la mise à jour par l'orchestrateur ne se croisent jamais.
+    root_lock: tokio::sync::Mutex<()>,
 }
 
 /// Ce que l'interface doit savoir pour lancer un agent.
@@ -55,7 +64,7 @@ pub struct AgentWorkspace {
 }
 
 /// Le projet est un dépôt git, avec `.fast/` exclu ; sinon le dépôt est créé.
-async fn ensure_repo(root: &Path) -> AppResult<()> {
+pub(crate) async fn ensure_repo(root: &Path) -> AppResult<()> {
     if !git::is_repo(root).await {
         git::init(root).await?;
     }
@@ -104,7 +113,7 @@ pub async fn create_agent(state: &WorkspaceState, root: PathBuf, id: String, ind
     let register = |cwd: PathBuf, branch: Option<String>| {
         state.agents.lock().unwrap().insert(
             id.clone(),
-            AgentEntry { root: root.clone(), name: name.clone(), cwd, branch, busy: false },
+            AgentEntry { root: root.clone(), name: name.clone(), cwd, branch, index, busy: false, committing: false },
         );
     };
 
@@ -118,11 +127,6 @@ pub async fn create_agent(state: &WorkspaceState, root: PathBuf, id: String, ind
     }
 
     ensure_repo(&root).await?;
-    if index == 0 {
-        register(root.clone(), None);
-        let branch = git::current_branch(&root).await.ok();
-        return Ok(AgentWorkspace { cwd: root.clone(), branch, notice: None });
-    }
 
     let slug = format!("agent-{}", index + 1);
     let branch = format!("fast/{slug}");
@@ -160,8 +164,25 @@ pub fn set_busy(state: &WorkspaceState, id: &str, busy: bool) {
     }
 }
 
+pub(crate) fn set_committing(state: &WorkspaceState, id: &str, committing: bool) {
+    if let Some(entry) = state.agents.lock().unwrap().get_mut(id) {
+        entry.committing = committing;
+    }
+}
+
 pub(crate) fn entry(state: &WorkspaceState, id: &str) -> Option<AgentEntry> {
     state.agents.lock().unwrap().get(id).cloned()
+}
+
+/// Agent qui travaille dans le dossier du projet (sur la branche principale), s'il travaille en ce moment.
+pub(crate) fn busy_root_agent(state: &WorkspaceState, root: &Path) -> Option<String> {
+    state
+        .agents
+        .lock()
+        .unwrap()
+        .values()
+        .find(|e| e.root == root && e.branch.is_none() && (e.busy || e.committing))
+        .map(|e| e.name.clone())
 }
 
 /// Agents isolés et inactifs du projet : ceux qu'on peut mettre à jour sans risque.

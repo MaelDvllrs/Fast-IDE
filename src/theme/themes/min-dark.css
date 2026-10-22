@@ -1,0 +1,64 @@
+/* Thème « Min Dark », d'après le thème VS Code Min (Miguel Solorio) :
+   interface monochrome en gris, accent blanc, code aux couleurs douces. */
+:root[data-theme="min-dark"] {
+  color-scheme: dark;
+
+  /* Fonds */
+  --bg-app: #141414; /* fond général, derrière les fenêtres */
+  --bg-window: #1a1a1a;
+  --bg-explorer: #1a1a1a; /* barre latérale du thème d'origine */
+  --bg-composer: var(--bg-editor);
+  --bg-terminal: #1a1a1a;
+  --bg-editor: #1f1f1f; /* éditeur du thème d'origine */
+  --bg-editor-header: #1a1a1a;
+  --border-window: #262626;
+  --border-line: #141414;
+  --bg-elevated: #242424;
+  --bg-hover: #262626; /* survol des listes du thème d'origine */
+  --bg-active: #303030;
+  --selection: #ffffff1f;
+
+  --border: #2a2a2a;
+  --border-strong: #383838;
+
+  /* Texte */
+  --text: #bbbbbb;
+  --text-strong: #fafafa;
+  --text-dim: #888888;
+  --text-label: #5c5c5c;
+  --text-tree: #888888;
+  --text-explorer: var(--text-dim);
+  --text-agent: var(--text);
+  --timeline: var(--border-strong);
+  --timeline-dot: var(--text-label);
+
+  /* Couleur primaire : le blanc des éléments actifs du thème d'origine */
+  --primary: #e0e0e0;
+  --primary-soft: color-mix(in srgb, var(--primary) 10%, transparent);
+  --on-primary: #1a1a1a;
+
+  /* Couleurs fonctionnelles */
+  --error: #ff7a84;
+
+  /* Code (éditeur) */
+  --line-number: #727272;
+  --syntax-text: #bbbbbb;
+  --syntax-keyword: #f97583;
+  --syntax-name: #bbbbbb;
+  --syntax-property: #79b8ff;
+  --syntax-function: #b392f0;
+  --syntax-constant: #79b8ff;
+  --syntax-definition: #b392f0;
+  --syntax-type: #b392f0;
+  --syntax-number: #f8f8f8;
+  --syntax-operator: #f97583;
+  --syntax-special: #ff9800;
+  --syntax-comment: #6b737c;
+  --syntax-comment-style: normal;
+  --syntax-string: #ffab70;
+  --syntax-heading: #ff7a84;
+  --syntax-tag: #ffab70;
+  --syntax-attribute: #b392f0;
+  --syntax-attribute-style: normal;
+  --syntax-invalid: #cd3131;
+}

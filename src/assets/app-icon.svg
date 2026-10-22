@@ -1,17 +1,1 @@
-<svg width="1024" height="1037" viewBox="0 0 1024 1037" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 -0.866025 0.5 256.522 296.206)" fill="white"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 0 1 0 444.309)" fill="#D9D9D9"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 -0.5 0 1 256.522 592.413)" fill="#B3B3B3"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 -0.866025 0.5 767.479 296.206)" fill="white"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 0 1 510.955 444.309)" fill="#D9D9D9"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 -0.5 0 1 767.479 592.413)" fill="#B3B3B3"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 -0.866025 0.5 767.479 0)" fill="white"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 0 1 510.955 148.103)" fill="#D9D9D9"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 -0.5 0 1 767.479 296.206)" fill="#B3B3B3"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 -0.866025 0.5 256.522 0)" fill="white"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 0 1 0 148.103)" fill="#D9D9D9"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 -0.5 0 1 256.522 296.206)" fill="#B3B3B3"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 -0.866025 0.5 512.001 444.309)" fill="white"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 0.5 0 1 255.478 592.413)" fill="#D9D9D9"/>
-<rect width="296.206" height="296.206" transform="matrix(0.866025 -0.5 0 1 512.001 740.516)" fill="#B3B3B3"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="28 28 200 200"><title>FAST symbol</title><g transform="translate(0.00,0.00) scale(1)"><path d="M88,40 H168 A48,48 0 0 1 216,88 V168 A48,48 0 0 1 168,216 H88 A48,48 0 0 1 40,168 V88 A48,48 0 0 1 88,40 Z" fill="#0B0C10"/><path d="M127.03,104.43 L118.23,137.27 A11.0,11.0 0 0 1 96.97,131.57 L105.77,98.73 A11.0,11.0 0 0 1 127.03,104.43 Z M165.03,104.43 L156.23,137.27 A11.0,11.0 0 0 1 134.97,131.57 L143.77,98.73 A11.0,11.0 0 0 1 165.03,104.43 Z" fill="#C6FF3D"/></g></svg>

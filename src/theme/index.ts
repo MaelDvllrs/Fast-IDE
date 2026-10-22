@@ -4,6 +4,9 @@
 import "./base.css";
 import "./themes/dark.css";
 import "./themes/shades-of-purple.css";
+import "./themes/tokyo-night.css";
+import "./themes/min-dark.css";
+import "./themes/min-light.css";
 
 export interface Theme {
   id: string;
@@ -22,6 +25,21 @@ export const THEMES: Theme[] = [
     id: "shades-of-purple",
     label: "Shades of Purple",
     preview: { app: "#0f0f22", window: "#131327", editor: "#191830", primary: "#fad000" },
+  },
+  {
+    id: "tokyo-night",
+    label: "Tokyo Night",
+    preview: { app: "#101014", window: "#16161e", editor: "#1a1b26", primary: "#7aa2f7" },
+  },
+  {
+    id: "min-dark",
+    label: "Min Dark",
+    preview: { app: "#141414", window: "#1a1a1a", editor: "#1f1f1f", primary: "#e0e0e0" },
+  },
+  {
+    id: "min-light",
+    label: "Min Light",
+    preview: { app: "#ececec", window: "#f6f6f6", editor: "#ffffff", primary: "#212121" },
   },
 ];
 

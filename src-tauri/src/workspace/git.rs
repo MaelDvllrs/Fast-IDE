@@ -17,13 +17,19 @@ pub struct GitOutput {
 
 /// Lance `git <args>` dans `dir` et rend sa sortie, même en cas d'échec.
 pub async fn run(dir: &Path, args: &[&str]) -> AppResult<GitOutput> {
+    run_env(dir, args, &[]).await
+}
+
+/// Comme [`run`], avec des variables d'environnement en plus (identifiants GitHub…).
+pub async fn run_env(dir: &Path, args: &[&str], env: &[(String, String)]) -> AppResult<GitOutput> {
     let mut cmd = Command::new("git");
     cmd.args(args)
         .current_dir(dir)
         .stdin(Stdio::null())
         // Jamais de demande interactive (identifiants, éditeur de message).
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_EDITOR", "true");
+        .env("GIT_EDITOR", "true")
+        .envs(env.iter().map(|(k, v)| (k, v)));
     platform::configure_command(&mut cmd);
     let out = cmd.output().await?;
     Ok(GitOutput {
@@ -55,11 +61,16 @@ pub async fn is_repo(dir: &Path) -> bool {
 }
 
 /// Options à ajouter si aucune identité git n'est configurée : sinon `commit` échoue.
-async fn identity(dir: &Path) -> Vec<&'static str> {
-    match run(dir, &["config", "user.email"]).await {
-        Ok(out) if out.ok && !out.stdout.trim().is_empty() => vec![],
-        _ => vec!["-c", "user.name=FAST", "-c", "user.email=fast@localhost"],
+pub async fn identity(dir: &Path) -> Vec<&'static str> {
+    if has_identity(dir).await {
+        return vec![];
     }
+    vec!["-c", "user.name=FAST", "-c", "user.email=fast@localhost"]
+}
+
+/// Une identité git (`user.email`) est-elle configurée ?
+pub async fn has_identity(dir: &Path) -> bool {
+    matches!(run(dir, &["config", "user.email"]).await, Ok(out) if out.ok && !out.stdout.trim().is_empty())
 }
 
 /// Indexe tout et crée un commit. `false` s'il n'y avait rien à committer.

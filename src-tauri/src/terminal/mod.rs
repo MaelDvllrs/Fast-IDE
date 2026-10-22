@@ -61,6 +61,9 @@ pub struct StartOptions {
     pub rows: u16,
     /// Message affiché avant la première invite du shell.
     pub banner: Option<String>,
+    /// Commande à exécuter à la place du shell interactif (le processus se
+    /// termine avec elle) ; utilisée par le bouton Run.
+    pub command: Option<String>,
 }
 
 pub fn start(app: AppHandle, state: &TerminalState, id: String, opts: StartOptions) -> AppResult<()> {
@@ -71,7 +74,10 @@ pub fn start(app: AppHandle, state: &TerminalState, id: String, opts: StartOptio
 
     let pair = native_pty_system().openpty(size(opts.cols, opts.rows)).map_err(pty_error)?;
 
-    let launch = platform::shell_launch(opts.banner.as_deref());
+    let launch = match &opts.command {
+        Some(command) => platform::command_launch(command),
+        None => platform::shell_launch(opts.banner.as_deref()),
+    };
     let mut cmd = CommandBuilder::new(&launch.program);
     cmd.args(&launch.args);
     if let Some(cwd) = opts.cwd.or_else(platform::home_dir) {
@@ -163,5 +169,46 @@ fn emit(app: &AppHandle, id: &str, event: EventKind) {
     let payload = TerminalEvent { session_id: id.to_owned(), event };
     if let Err(err) = app.emit(EVENT, payload) {
         eprintln!("failed to emit terminal event: {err}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Le mode commande (bouton Run) exécute la ligne et rend son code de sortie.
+    #[test]
+    fn runs_a_command_in_a_pty() {
+        let pair = native_pty_system().openpty(size(80, 24)).unwrap();
+        let launch = platform::command_launch("echo fast-run-ok && exit 3");
+        let mut cmd = CommandBuilder::new(&launch.program);
+        cmd.args(&launch.args);
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        // ConPTY demande la position du curseur avant d'afficher quoi que ce soit ;
+        // xterm répond tout seul dans l'app, le test le fait à sa place.
+        let mut writer = pair.master.take_writer().unwrap();
+        writer.write_all(b"[1;1R").unwrap();
+        let reading = std::thread::spawn(move || {
+            let mut out = Vec::new();
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                out.extend_from_slice(&buf[..n]);
+                if String::from_utf8_lossy(&out).contains("fast-run-ok") {
+                    break;
+                }
+            }
+            String::from_utf8_lossy(&out).into_owned()
+        });
+        let output = reading.join().unwrap();
+        let status = child.wait().unwrap();
+        drop(writer);
+        drop(pair.master);
+        assert!(output.contains("fast-run-ok"), "{output:?}");
+        assert_eq!(status.exit_code(), 3);
     }
 }
