@@ -4,15 +4,17 @@ import { project, settings, type RunCandidate } from "../lib/ipc";
 import { RUN_CONFIG_EVENT } from "../lib/runner";
 import { THEMES, applyTheme, currentTheme } from "../theme";
 import { UiIcon } from "./fileIcons";
+import { UpdateCheck } from "./Updates";
 import { GithubSignIn } from "./GithubSignIn";
 
-export type PreferencesSection = "appearance" | "project" | "accounts";
+export type PreferencesSection = "appearance" | "project" | "accounts" | "updates";
 type Section = PreferencesSection;
 
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: "appearance", label: "Appearance", icon: "lucide:palette" },
   { id: "project", label: "Project", icon: "lucide:hammer" },
   { id: "accounts", label: "Accounts", icon: "lucide:github" },
+  { id: "updates", label: "Updates", icon: "lucide:download" },
 ];
 
 /** Fenêtre de préférences : navigation par sections à gauche, réglages à droite. */
@@ -63,6 +65,7 @@ export function PreferencesDialog({
           {section === "appearance" && <AppearanceSettings />}
           {section === "project" && <ProjectSettings root={root} />}
           {section === "accounts" && <AccountSettings />}
+          {section === "updates" && <UpdateSettings />}
         </section>
       </div>
     </div>
@@ -74,7 +77,10 @@ function AppearanceSettings() {
 
   const select = (id: string) => {
     setTheme(applyTheme(id));
-    settings.save({ theme: id }).catch(() => {});
+    settings
+      .load()
+      .then((current) => settings.save({ ...current, theme: id }))
+      .catch(() => {});
   };
 
   return (
@@ -268,6 +274,55 @@ function AccountSettings() {
         </div>
       ) : (
         <GithubSignIn />
+      )}
+    </div>
+  );
+}
+
+/** Mises à jour : automatiques au lancement (par défaut), ou recherche à la main. */
+function UpdateSettings() {
+  const [auto, setAuto] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    settings.load().then((s) => setAuto(s.autoUpdate !== false), () => setAuto(true));
+  }, []);
+
+  const toggle = (on: boolean) => {
+    setAuto(on);
+    settings
+      .load()
+      .then((current) => settings.save({ ...current, autoUpdate: on }))
+      .catch(() => {});
+  };
+
+  return (
+    <div className="preferences-body">
+      <div className="setting-text">
+        <div className="setting-label">Automatic updates</div>
+        <div className="setting-description">
+          At launch, Fast checks GitHub for a new version, installs it and restarts. Nothing is interrupted: no agent or program is
+          running yet.
+        </div>
+      </div>
+      <label className="setting-check">
+        <input type="checkbox" checked={auto ?? true} disabled={auto === null} onChange={(e) => toggle(e.target.checked)} />
+        Update automatically at launch
+      </label>
+
+      <div className="setting-text setting-group">
+        <div className="setting-label">Check now</div>
+        <div className="setting-description">Look for a new version without restarting Fast.</div>
+      </div>
+      {checking ? (
+        <UpdateCheck />
+      ) : (
+        <div>
+          <button className="secondary-button" onClick={() => setChecking(true)}>
+            <UiIcon name="lucide:refresh-cw" className="secondary-button-icon" />
+            Check for updates
+          </button>
+        </div>
       )}
     </div>
   );

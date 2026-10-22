@@ -18,6 +18,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Mises à jour : vérifiées au lancement sur les releases GitHub (voir src/lib/updater.ts).
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(claude::ClaudeState::default())
         .manage(terminal::TerminalState::default())
         .manage(workspace::WorkspaceState::default())

@@ -51,6 +51,8 @@ export const appWindow = {
 export interface Settings {
   /** Identifiant du thème (ex. "dark"), `null` pour le thème par défaut. */
   theme: string | null;
+  /** Mise à jour automatique au lancement ; `null` = activée. */
+  autoUpdate?: boolean | null;
 }
 
 export const settings = {

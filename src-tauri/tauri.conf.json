@@ -33,6 +33,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkzQzI0ODk3NkUxRTBGQzkKUldUSkR4NXVsMGpDazI5WkkvdmlQdm01VGtUNlVmUmMzaVprS3lyTmxkUitLTGJwbGpCYWZzdFcK",
+      "endpoints": [
+        "https://github.com/MaelDvllrs/IDE/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

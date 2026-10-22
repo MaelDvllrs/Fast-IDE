@@ -5012,3 +5012,111 @@ li:last-child > .scm-commit-row::before {
   height: 10px;
   color: var(--on-primary);
 }
+
+/* --- Mises à jour ---------------------------------------------------------- */
+.update-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: var(--bg-app);
+}
+
+.update-logo {
+  width: 56px;
+  height: 56px;
+}
+
+.update-title {
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.update-bar {
+  width: min(320px, 70vw);
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-active);
+}
+
+.update-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary);
+  transition: width 0.2s ease;
+}
+
+/* Taille inconnue : la barre glisse en continu */
+.update-bar.indeterminate > span {
+  animation: update-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes update-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.update-error {
+  max-width: 420px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--error);
+}
+
+.update-check {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.update-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.update-line-icon {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  color: var(--text-dim);
+}
+
+.update-line.ok .update-line-icon {
+  color: var(--git-added);
+}
+
+.update-line.error .update-line-icon {
+  color: var(--error);
+}
+
+.update-line-icon.accent {
+  color: var(--primary);
+}
+
+.update-notes {
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg-window);
+}
+
+.update-actions {
+  display: flex;
+  justify-content: flex-end;
+}

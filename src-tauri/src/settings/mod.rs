@@ -16,6 +16,8 @@ use crate::error::{AppError, AppResult};
 pub struct Settings {
     /// Identifiant du thème de l'interface (ex. "dark"), `None` pour le thème par défaut.
     pub theme: Option<String>,
+    /// Mise à jour automatique au lancement ; `None` = activée (valeur par défaut).
+    pub auto_update: Option<bool>,
 }
 
 fn path(app: &AppHandle) -> AppResult<PathBuf> {

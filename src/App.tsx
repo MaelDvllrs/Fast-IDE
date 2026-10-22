@@ -7,6 +7,7 @@ import { PreferencesDialog, type PreferencesSection } from "./components/Prefere
 import { ResizeHandle } from "./components/ResizeHandle";
 import { NotificationBell } from "./components/NotificationBell";
 import { RunControl } from "./components/RunControl";
+import { StartupUpdate, UpdateDialog } from "./components/Updates";
 import { Editor } from "./components/Editor";
 import { CloneDialog, PublishDialog } from "./components/GithubDialogs";
 import { FastLogo } from "./components/FastLogo";
@@ -52,6 +53,9 @@ export function App() {
   const [agentDetail, setAgentDetail] = useState<string | null>(null);
   const closeAgentDetail = useCallback(() => setAgentDetail(null), []);
   const closePreferences = useCallback(() => setPreferencesOpen(null), []);
+  // Fenêtre « Check for updates… » (menu Settings).
+  const [updatesOpen, setUpdatesOpen] = useState(false);
+  const closeUpdates = useCallback(() => setUpdatesOpen(false), []);
 
   // Ctrl+, (⌘, sur macOS) ouvre les préférences, comme dans la plupart des éditeurs.
   useEffect(() => {
@@ -138,6 +142,8 @@ export function App() {
       // Les options seront ajoutées ici au fur et à mesure.
       items: [
         { label: "Preferences…", shortcut: platform().shortcut(","), onSelect: () => setPreferencesOpen("appearance") },
+        "separator",
+        { label: "Check for updates…", onSelect: () => setUpdatesOpen(true) },
       ],
     },
   ];
@@ -271,6 +277,9 @@ export function App() {
           </>
         )}
       </div>
+      {updatesOpen && <UpdateDialog onClose={closeUpdates} />}
+      {/* Au lancement : mise à jour automatique si une nouvelle version est publiée */}
+      <StartupUpdate />
       {preferencesOpen && <PreferencesDialog onClose={closePreferences} root={root} initialSection={preferencesOpen} />}
       {githubDialog === "clone" && (
         <CloneDialog
