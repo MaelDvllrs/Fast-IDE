@@ -137,6 +137,11 @@ pub fn own_process_tree(cmd: &mut tokio::process::Command) {
 /// arrêté en entier, descendants orphelins compris.
 pub use imp::ProcessTree;
 
+/// Les processus lancés désormais survivent à l'app (installeur d'une mise à jour).
+pub fn release_new_children() {
+    imp::release_new_children()
+}
+
 /// Dossier personnel de l'utilisateur.
 pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os(imp::HOME_VAR).map(PathBuf::from)

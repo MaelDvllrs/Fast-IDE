@@ -6,6 +6,9 @@ pub const HOME_VAR: &str = "USERPROFILE";
 /// https://learn.microsoft.com/windows/win32/procthread/process-creation-flags
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Job Object de l'app (handle), gardé pour `release_new_children`.
+static JOB: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
 /// Place l'app dans un Job Object « tuer à la fermeture » : tous ses processus
 /// enfants (shells du terminal, Claude Code, WebView2) héritent du job et sont
 /// arrêtés par Windows quand l'app se termine, même sur un plantage.
@@ -31,11 +34,34 @@ pub fn init() {
             &info as *const _ as *const std::ffi::c_void,
             std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
         );
-        if configured != 0 {
-            AssignProcessToJobObject(job, GetCurrentProcess());
+        if configured != 0 && AssignProcessToJobObject(job, GetCurrentProcess()) != 0 {
+            let _ = JOB.set(job as usize);
         }
         // Le handle n'est volontairement jamais fermé : c'est sa fermeture
         // automatique, à la fin du processus, qui arrête les enfants.
+    }
+}
+
+/// Les processus lancés à partir de maintenant sortent du job : ils survivent à
+/// l'app (ceux déjà lancés restent arrêtés avec elle). Pour l'installeur d'une
+/// mise à jour, lancé juste avant que l'app se ferme pour le laisser remplacer
+/// ses fichiers : sans cela, il serait tué avec elle.
+pub fn release_new_children() {
+    use windows_sys::Win32::System::JobObjects::{
+        JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK,
+    };
+    let Some(&job) = JOB.get() else { return };
+    // SAFETY : handle du job créé par `init`, jamais fermé ; structure initialisée à zéro.
+    unsafe {
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+        SetInformationJobObject(
+            job as _,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
     }
 }
 
@@ -237,3 +263,4 @@ pub fn command_launch(command: &str) -> super::ShellLaunch {
         prints_banner: false,
     }
 }
+

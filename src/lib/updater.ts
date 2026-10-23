@@ -2,6 +2,7 @@
 // GitHub (voir plugins.updater dans tauri.conf.json). Le plugin vérifie la
 // signature avant d'installer ; l'app redémarre ensuite sur la nouvelle version.
 import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
@@ -24,7 +25,7 @@ export async function findUpdate(timeoutMs?: number): Promise<Update | null> {
 export async function installUpdate(update: Update, onProgress: (ratio: number | null) => void) {
   let total = 0;
   let received = 0;
-  await update.downloadAndInstall((event) => {
+  await update.download((event) => {
     if (event.event === "Started") {
       total = event.data.contentLength ?? 0;
       onProgress(total ? 0 : null);
@@ -35,5 +36,10 @@ export async function installUpdate(update: Update, onProgress: (ratio: number |
       onProgress(1);
     }
   });
+  // Agents, terminaux et serveurs arrêtés ; sous Windows, l'installeur pourra
+  // survivre à la fermeture de FAST (sinon il serait arrêté avec elle).
+  await invoke("prepare_update_install");
+  // Windows : l'installeur remplace FAST puis la relance lui-même ; macOS : relance ici.
+  await update.install();
   await relaunch();
 }

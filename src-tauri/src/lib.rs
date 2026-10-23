@@ -13,7 +13,25 @@ mod speech;
 mod terminal;
 mod workspace;
 
-use tauri::{Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent};
+
+/// Arrête les shells, les agents et les tâches du planificateur.
+fn stop_everything(app: &AppHandle) {
+    terminal::stop_all(&app.state::<terminal::TerminalState>());
+    claude::stop_all(&app.state::<claude::ClaudeState>());
+    codex::stop_all(&app.state::<codex::CodexState>());
+    gemini::stop_all(&app.state::<gemini::GeminiState>());
+    scheduler::stop_all(app);
+}
+
+/// Juste avant d'installer une mise à jour : tout ce qui tourne s'arrête, et
+/// l'installeur, lancé ensuite, pourra survivre à la fermeture de l'app (sous
+/// Windows, le job de l'app l'arrêterait sinon avec elle).
+#[tauri::command]
+async fn prepare_update_install(app: AppHandle) {
+    let _ = tauri::async_runtime::spawn_blocking(move || stop_everything(&app)).await;
+    platform::release_new_children();
+}
 
 pub fn run() {
     platform::init();
@@ -104,6 +122,7 @@ pub fn run() {
             commands::terminal::terminal_write,
             commands::terminal::terminal_resize,
             commands::terminal::terminal_stop,
+            prepare_update_install,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the Tauri application")
@@ -111,11 +130,7 @@ pub fn run() {
             // Fermeture de l'app : on arrête les shells et Claude Code plutôt
             // que de les laisser tourner en arrière-plan.
             if let RunEvent::Exit = event {
-                terminal::stop_all(&app.state::<terminal::TerminalState>());
-                claude::stop_all(&app.state::<claude::ClaudeState>());
-                codex::stop_all(&app.state::<codex::CodexState>());
-                gemini::stop_all(&app.state::<gemini::GeminiState>());
-                scheduler::stop_all(app);
+                stop_everything(app);
             }
         });
 }

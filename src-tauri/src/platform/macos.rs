@@ -52,6 +52,9 @@ pub fn unlink_dir(link: &std::path::Path) -> crate::error::AppResult<()> {
 
 pub fn configure_command(_cmd: &mut tokio::process::Command) {}
 
+/// Rien à faire : les processus enfants ne sont pas liés à l'app sur macOS.
+pub fn release_new_children() {}
+
 /// Groupe de processus propre : `kill -<pid>` atteint aussi tous les descendants.
 pub fn own_process_tree(cmd: &mut tokio::process::Command) {
     cmd.process_group(0);
