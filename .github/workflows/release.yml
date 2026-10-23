@@ -30,6 +30,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Un tag dont la version ne correspond pas publierait l'ancienne version sous
+      # un nouveau nom (et sans latest.json valable) : on s'arrête tout de suite.
+      - name: Check that the version matches the tag
+        shell: bash
+        run: |
+          version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME but the app version is $version. Run: npm run version:set ${GITHUB_REF_NAME#v}"
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22

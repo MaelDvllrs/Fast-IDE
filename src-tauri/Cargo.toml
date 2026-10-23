@@ -1,6 +1,6 @@
 [package]
 name = "fast"
-version = "0.2.0"
+version = "0.2.1"
 description = "Fast, a minimalist IDE for coding with AI agents"
 edition = "2021"
 license = "MIT"
