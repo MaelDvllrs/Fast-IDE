@@ -1,9 +1,12 @@
 mod claude;
+mod codex;
 mod commands;
 mod error;
 mod fs;
+mod gemini;
 mod github;
 mod platform;
+mod scheduler;
 mod scm;
 mod settings;
 mod speech;
@@ -22,6 +25,16 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(claude::ClaudeState::default())
+        .manage(codex::CodexState::default())
+        .manage(gemini::GeminiState::default())
+        .manage(scheduler::SchedulerState::default())
+        // Serveur MCP du planificateur : les agents y lancent vérifications, builds et previews.
+        .setup(|app| {
+            scheduler::serve(app.handle().clone());
+            #[cfg(debug_assertions)]
+            scheduler::debug_probe(app.handle().clone());
+            Ok(())
+        })
         .manage(terminal::TerminalState::default())
         .manage(workspace::WorkspaceState::default())
         .manage(github::GithubState::default())
@@ -72,6 +85,16 @@ pub fn run() {
             commands::claude::claude_permission,
             commands::claude::claude_quick,
             commands::claude::claude_interrupt,
+            commands::claude::codex_status,
+            commands::claude::codex_logout,
+            commands::claude::codex_models,
+            commands::claude::codex_start,
+            commands::claude::gemini_status,
+            commands::claude::gemini_login,
+            commands::claude::gemini_logout,
+            commands::claude::gemini_start,
+            scheduler::scheduler_tasks,
+            scheduler::scheduler_stop,
             commands::claude::claude_stop,
             commands::settings::settings_load,
             commands::settings::settings_save,
@@ -90,6 +113,9 @@ pub fn run() {
             if let RunEvent::Exit = event {
                 terminal::stop_all(&app.state::<terminal::TerminalState>());
                 claude::stop_all(&app.state::<claude::ClaudeState>());
+                codex::stop_all(&app.state::<codex::CodexState>());
+                gemini::stop_all(&app.state::<gemini::GeminiState>());
+                scheduler::stop_all(app);
             }
         });
 }

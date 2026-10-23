@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { CLAUDE_CODE, EFFORTS } from "../agents/providers";
+import { effortsFor, PROVIDER_INFO, PROVIDERS, providerIdOf } from "../agents/providers";
+import { toAgentModels, useCodexModels } from "../lib/codexModels";
 import {
   requestModelChange,
+  requestProviderChange,
   requestSystemPromptChange,
   totalTokens,
   useAgentRoster,
@@ -16,11 +18,11 @@ import { ModelChart, UsageChart } from "./UsageCharts";
 
 type AppIcon = "fast:claude-app" | "fast:openai-app" | "fast:gemini-app";
 
-// IA possibles pour un agent ; seul Claude Code est branché pour l'instant.
+// IA possibles pour un agent : Claude Code, Codex (OpenAI) et Gemini (Google).
 const AIS: { id: string; label: string; icon: AppIcon; available: boolean }[] = [
   { id: "claude-code", label: "Claude Code", icon: "fast:claude-app", available: true },
-  { id: "openai", label: "OpenAI", icon: "fast:openai-app", available: false },
-  { id: "gemini", label: "Gemini", icon: "fast:gemini-app", available: false },
+  { id: "codex", label: "Codex", icon: "fast:openai-app", available: true },
+  { id: "gemini", label: "Gemini", icon: "fast:gemini-app", available: true },
 ];
 
 /**
@@ -103,7 +105,7 @@ export function AgentDetail({ agentId, onClose }: { agentId: string; onClose: ()
               </tr>
               <tr>
                 <td>AI</td>
-                <td>Claude Code</td>
+                <td>{PROVIDER_INFO[providerIdOf(agent.provider)].label}</td>
               </tr>
               <tr>
                 <td>Model</td>
@@ -111,7 +113,7 @@ export function AgentDetail({ agentId, onClose }: { agentId: string; onClose: ()
               </tr>
               <tr>
                 <td>Effort</td>
-                <td>{EFFORTS.find((e) => e.id === agent.effort)?.label ?? "Default"}</td>
+                <td>{effortsFor(agent.provider).find((e) => e.id === agent.effort)?.label ?? "Default"}</td>
               </tr>
               <tr>
                 <td>Token limit</td>
@@ -147,13 +149,15 @@ export function AgentDetail({ agentId, onClose }: { agentId: string; onClose: ()
 
 /** Modèle de l'agent : choix de l'IA puis du modèle, deux menus côte à côte. */
 function AgentOptions({ agent }: { agent: RosterAgent }) {
-  const models = CLAUDE_CODE.models;
+  const isCodex = providerIdOf(agent.provider) === "codex";
+  const codexModels = useCodexModels(isCodex);
+  const models = isCodex ? toAgentModels(codexModels) : PROVIDERS[providerIdOf(agent.provider)].models;
   const current = models.find((m) => m.id === agent.modelId) ?? models[0];
-  // « Default » affiche le modèle réellement utilisé quand Claude Code l'a annoncé.
+  // « Default » affiche le modèle réellement utilisé quand l'IA l'a annoncé.
   const label = (m: (typeof models)[number]) =>
     m.id === null && agent.modelId === null && agent.model ? `Default (${agent.model})` : m.label;
 
-  const ai = AIS[0];
+  const ai = AIS.find((a) => a.id === providerIdOf(agent.provider)) ?? AIS[0];
 
   return (
     <section className="agent-options">
@@ -173,7 +177,16 @@ function AgentOptions({ agent }: { agent: RosterAgent }) {
         >
           {(close) =>
             AIS.map((item) => (
-              <button key={item.id} className="popover-item" disabled={!item.available} onClick={close}>
+              <button
+                key={item.id}
+                className="popover-item"
+                disabled={!item.available}
+                onClick={() => {
+                  close();
+                  // Autre IA : nouvelle session et nouvelle conversation (les messages restent affichés).
+                  if (item.id !== ai.id) requestProviderChange(agent.id, item.id);
+                }}
+              >
                 <span className="popover-check">
                   {item.id === ai.id && <UiIcon name="lucide:check" className="popover-icon" />}
                 </span>

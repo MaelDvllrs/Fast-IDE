@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { RosterAgent, Turn } from "../lib/agentRoster";
+import { PROVIDER_INFO, providerIdOf } from "../agents/providers";
 import { compact, dollars } from "./AgentOverview";
 import { Popover } from "./Composer";
 import { UiIcon } from "./fileIcons";
@@ -205,6 +206,8 @@ export function ModelChart({ agent }: { agent: RosterAgent }) {
   }
   // Le modèle le plus utilisé en premier : c'est lui qui est mis en avant.
   const models = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  // « Claude Opus 5.5 » ; les noms Codex et Gemini (« GPT-6.1-Sol », « Gemini 3.1 Pro ») se suffisent.
+  const modelPrefix = providerIdOf(agent.provider) === "claude-code" ? "Claude " : "";
   const sum = models.reduce((s, [, v]) => s + v, 0);
   const top = niceMax(models[0]?.[1] ?? 0, metric);
 
@@ -223,9 +226,9 @@ export function ModelChart({ agent }: { agent: RosterAgent }) {
               <div
                 key={name}
                 className={i === 0 ? "model-bar-slot top" : "model-bar-slot"}
-                title={`Claude ${name}: ${format(value, metric)} (${Math.round((value / (sum || 1)) * 100)}%)`}
+                title={`${modelPrefix}${name}: ${format(value, metric)} (${Math.round((value / (sum || 1)) * 100)}%)`}
               >
-                <UiIcon name="fast:claude-app" className="model-bar-icon" />
+                <UiIcon name={PROVIDER_INFO[providerIdOf(agent.provider)].icon} className="model-bar-icon" />
                 <span className="model-bar" style={{ height: `${Math.max(2, (value / top) * 100)}%` }} />
               </div>
             ))}
@@ -234,8 +237,8 @@ export function ModelChart({ agent }: { agent: RosterAgent }) {
           <div className="chart-bottom">
             {models.length > 0 && (
               <>
-                <UiIcon name="fast:claude-app" className="model-summary-icon" />
-                Most used: Claude {models[0][0]}
+                <UiIcon name={PROVIDER_INFO[providerIdOf(agent.provider)].icon} className="model-summary-icon" />
+                Most used: {modelPrefix}{models[0][0]}
               </>
             )}
           </div>

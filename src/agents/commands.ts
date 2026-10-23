@@ -57,6 +57,28 @@ Reproduce it if you can, find the root cause (not just the symptom), apply the f
 Finish with: the root cause, the fix, and how you verified it.`,
   },
   {
+    name: "deps",
+    description: "Main build failing: check the libraries you installed are declared and installed",
+    hint: "the build error",
+    readOnly: false,
+    prompt: (args) =>
+      `The production build fails on the main branch after your work was merged, probably because of a dependency (framework or library) your changes use or that you installed, but that the main branch does not have.
+${args ? `
+Build output:
+\`\`\`
+${args}
+\`\`\`
+` : ""}
+Check and fix it:
+1. List the packages your changes rely on: compare your branch with the main branch (\`git diff\` against their merge base), and look at new imports and at changes to package.json, the lockfile and other manifests (Cargo.toml, pyproject.toml, requirements.txt…).
+2. Every package you use must be declared in the manifest (dependencies or devDependencies, as appropriate), with the lockfile updated by the project's package manager: the one whose lockfile is in the project (npm, pnpm, yarn or bun). Never edit a lockfile by hand.
+3. FAST commits your work when you finish and only merges what is committed: make sure the manifest and lockfile changes are in your changes and not ignored by .gitignore.
+4. Check that each package is really installed. In FAST, node_modules is shared between the project and the agents' worktrees: a package installed elsewhere (globally, in another folder or with another package manager) is missing for the main build. Install what is missing with the project's package manager.
+5. Remove the dependencies you added but no longer use.
+6. Run the build with the \`run_check\` tool of the \`fast\` MCP server (kind="build") and fix what still fails.
+Finish with a short summary: what was missing, what you changed, and the build result.`,
+  },
+  {
     name: "commit",
     description: "Prepare a commit message from the current changes",
     hint: "notes for the message",

@@ -128,6 +128,15 @@ pub fn unlink_dir(link: &std::path::Path) -> AppResult<()> {
     imp::unlink_dir(link)
 }
 
+/// Prépare une commande dont on arrêtera tout l'arbre de processus (serveur de dev…).
+pub fn own_process_tree(cmd: &mut tokio::process::Command) {
+    imp::own_process_tree(cmd)
+}
+
+/// Arbre de processus d'une tâche (job Windows, groupe de processus macOS) :
+/// arrêté en entier, descendants orphelins compris.
+pub use imp::ProcessTree;
+
 /// Dossier personnel de l'utilisateur.
 pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os(imp::HOME_VAR).map(PathBuf::from)

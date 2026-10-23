@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 
 use crate::error::{AppError, AppResult};
 
@@ -18,9 +18,16 @@ pub struct Settings {
     pub theme: Option<String>,
     /// Mise à jour automatique au lancement ; `None` = activée (valeur par défaut).
     pub auto_update: Option<bool>,
+    /// Dernier projet ouvert, rouvert au lancement.
+    pub last_project: Option<String>,
+    /// Compte GitHub connecté (login, nom, avatar), affiché dès le lancement en
+    /// attendant la réponse de GitHub. Le jeton reste dans le trousseau du système.
+    pub github_account: Option<serde_json::Value>,
+    /// Tâches lourdes des agents en même temps par projet ; `None` = limites par défaut.
+    pub scheduler: Option<crate::scheduler::Limits>,
 }
 
-fn path(app: &AppHandle) -> AppResult<PathBuf> {
+fn path<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     let dir = app
         .path()
         .app_config_dir()
@@ -29,7 +36,7 @@ fn path(app: &AppHandle) -> AppResult<PathBuf> {
 }
 
 /// Lit les préférences ; fichier absent ou illisible = préférences par défaut.
-pub fn load(app: &AppHandle) -> Settings {
+pub fn load<R: Runtime>(app: &AppHandle<R>) -> Settings {
     path(app)
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
@@ -39,7 +46,7 @@ pub fn load(app: &AppHandle) -> Settings {
 
 /// Écrit les préférences via un fichier temporaire puis un renommage, pour ne
 /// jamais laisser un fichier à moitié écrit.
-pub fn save(app: &AppHandle, settings: &Settings) -> AppResult<()> {
+pub fn save<R: Runtime>(app: &AppHandle<R>, settings: &Settings) -> AppResult<()> {
     let target = path(app)?;
     if let Some(dir) = target.parent() {
         std::fs::create_dir_all(dir)?;

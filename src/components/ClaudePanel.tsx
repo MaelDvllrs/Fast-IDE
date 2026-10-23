@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { extractCommitMessage, parseCommand, withUltracode, type AgentCommand } from "../agents/commands";
-import { CLAUDE_CODE, type Attachment, EFFORTS } from "../agents/providers";
+import {
+  CLAUDE_CODE,
+  CODEX_EFFORTS,
+  effortsFor,
+  PROVIDER_INFO,
+  PROVIDERS,
+  type Attachment,
+  type ProviderId,
+} from "../agents/providers";
+import { toAgentModels, useCodexModels } from "../lib/codexModels";
 import {
   agents as agentsApi,
   claude,
+  codex,
+  gemini,
   scm,
   type AgentWorkspace,
   type ClaudeMessage,
@@ -18,6 +29,7 @@ import {
   onFocusAgent,
   onModelChangeRequest,
   onNewAgentRequest,
+  onProviderChangeRequest,
   openAgentSettings,
   syncAgents,
   totalTokens,
@@ -30,12 +42,14 @@ import {
   loadProjectAgents,
   MAX_SAVED_ITEMS,
   saveAgent,
+  savedAgent,
   setAgentOrder,
   type SavedAgent,
   type SavedProject,
 } from "../lib/projectAgents";
 import { runInTerminal } from "../lib/terminalBus";
 import { AgentMascot } from "./AgentMascot";
+import { Popover } from "./Composer";
 import { Markdown } from "./Markdown";
 import { compact } from "./AgentOverview";
 import { Composer } from "./Composer";
@@ -71,8 +85,12 @@ interface Agent {
   index: number;
   name: string;
   color: string;
+  /** IA de l'agent : Claude Code, Codex ou Gemini. */
+  provider: ProviderId;
   /** État enregistré lors d'une session précédente, à restaurer. */
   saved?: SavedAgent;
+  /** Incrémenté à chaque changement d'IA : la session repart de zéro. */
+  switched?: number;
 }
 
 /** Noms des agents dans l'ordre de création : Prime est l'agent principal et a
@@ -86,10 +104,10 @@ const agentName = (n: number) => {
   return `${SECONDARY_NAMES[k % SECONDARY_NAMES.length]} ${Math.floor(k / SECONDARY_NAMES.length) + 1}`;
 };
 
-/** IA disponibles pour les agents ; chacune n'apparaît qu'une fois dans l'en-tête du mode Vibe. */
-const SESSION_AIS: { id: string; label: string; icon: "fast:claude-app" }[] = [
-  { id: "claude-code", label: "Claude Code", icon: "fast:claude-app" },
-];
+/** IA proposées à l'ajout d'un agent, dans cet ordre. */
+const PROVIDER_IDS: ProviderId[] = ["claude-code", "codex", "gemini"];
+
+const isProvider = (value: unknown): value is ProviderId => PROVIDER_IDS.includes(value as ProviderId);
 
 /** Colonnes de la grille du mode large selon le nombre d'agents :
  *  1 → 1, 2 → 2, 3 → 3, 4 → 2×2, 5-6 → 3×2, 7-9 → 3×3… */
@@ -113,29 +131,33 @@ function AgentTabs({
   saved: SavedProject | null;
 }) {
   // Le n-ième agent créé : nom et couleur suivent l'ordre de création.
-  const agentAt = (n: number): Agent => ({
+  const agentAt = (n: number, provider: ProviderId = "claude-code"): Agent => ({
     id: crypto.randomUUID(),
     index: n,
     name: agentName(n),
     color: AGENT_COLORS[n % AGENT_COLORS.length],
+    provider,
   });
   const [agents, setAgents] = useState<Agent[]>(() =>
-    saved?.agents.length ? saved.agents.map((a) => ({ ...agentAt(a.index), saved: a })) : [agentAt(0)],
+    saved?.agents.length
+      ? saved.agents.map((a) => ({ ...agentAt(a.index, isProvider(a.provider) ? a.provider : "claude-code"), saved: a }))
+      : [agentAt(0)],
   );
   // Prochain indice de création (après les agents restaurés) ; n'augmente qu'à l'ajout d'un agent.
   const created = useRef(Math.max(0, ...agents.map((a) => a.index)) + 1);
   // Ordre des onglets enregistré pour la prochaine ouverture ; un agent fermé est oublié.
   useEffect(() => setAgentOrder(agents.map((a) => a.index)), [agents]);
-  const makeAgent = () => agentAt(created.current++);
+  const makeAgent = (provider: ProviderId) => agentAt(created.current++, provider);
   const [activeId, setActiveId] = useState(agents[0].id);
   // Liste partagée (panneau Agents) : suit les onglets, vidée à la fermeture du projet.
   useEffect(
     () =>
       syncAgents(
-        agents.map(({ id, name, color, saved: s }) => ({
+        agents.map(({ id, name, color, provider, saved: s }) => ({
           id,
           name,
           color,
+          provider,
           // Agent restauré : sa consommation, sa limite et son résumé dès sa création.
           initial: s && { tokenLimit: s.tokenLimit, summary: s.summary, usage: s.usage, turns: s.turns, cost: s.cost },
         })),
@@ -170,15 +192,35 @@ function AgentTabs({
   const [drag, setDrag] = useState<{ id: string; over: string | null } | null>(null);
   const grid = expanded;
 
-  const add = () => {
-    const agent = makeAgent();
+  const add = (provider: ProviderId = "claude-code") => {
+    const agent = makeAgent(provider);
     setAgents((prev) => [...prev, agent]);
     setActiveId(agent.id);
   };
   // Bouton « Add agent » du panneau Agents. `add` change à chaque rendu : passé par une ref.
   const addRef = useRef(add);
   addRef.current = add;
-  useEffect(() => onNewAgentRequest(() => addRef.current()), []);
+  useEffect(() => onNewAgentRequest((provider) => addRef.current(isProvider(provider) ? provider : "claude-code")), []);
+  // Changement d'IA d'un agent (fenêtre de ses options) : nouvelle session, nouvelle
+  // conversation, mais les messages déjà affichés restent visibles.
+  useEffect(
+    () =>
+      onProviderChangeRequest((id, provider) => {
+        if (!isProvider(provider)) return;
+        setAgents((prev) =>
+          prev.map((a) => {
+            if (a.id !== id || a.provider === provider) return a;
+            const previous = savedAgent(a.index) as SavedAgent | undefined;
+            const kept = previous && { ...previous, provider, conversation: null, model: null, effort: null, ultracode: false };
+            saveAgent(a.index, { provider, conversation: null, model: null, effort: null });
+            // Consommation remise à zéro : elle revenait à l'ancienne IA, pas à la nouvelle.
+            updateAgent(id, { usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, turns: [], cost: 0 });
+            return { ...a, provider, saved: kept, switched: (a.switched ?? 0) + 1 };
+          }),
+        );
+      }),
+    [],
+  );
 
   const close = (id: string) => {
     agentsApi.removeWorkspace(id).catch(() => {});
@@ -246,7 +288,6 @@ function AgentTabs({
       });
     }
   }, [roster, agents]);
-  const sessionTokens = roster.reduce((sum, a) => sum + totalTokens(a.usage), 0);
   const summaries = Object.fromEntries(roster.map((a) => [a.id, a.summary]));
 
   return (
@@ -261,22 +302,22 @@ function AgentTabs({
               </span>
             ))}
           </div>
-          <button className="agent-add-button" onClick={add}>
-            <UiIcon name="lucide:plus" className="agent-add-icon" />
-            Add agent
-          </button>
-          {/* Jetons consommés depuis l'ouverture de l'app, par IA (seul Claude Code pour l'instant) */}
+          <AddAgentMenu onAdd={add} label="Add agent" />
+          {/* Jetons consommés depuis l'ouverture de l'app, par IA utilisée par les agents */}
           <span className="session-ais">
-            {SESSION_AIS.map((ai) => (
-              <span
-                key={ai.id}
-                className="session-ai"
-                title={`${ai.label}: ${sessionTokens.toLocaleString("en-US")} tokens this session`}
-              >
-                <UiIcon name={ai.icon} className="session-ai-icon" />
-                {compact(sessionTokens)}
-              </span>
-            ))}
+            {PROVIDER_IDS.filter((p) => roster.some((a) => a.provider === p)).map((p) => {
+              const tokens = roster.filter((a) => a.provider === p).reduce((sum, a) => sum + totalTokens(a.usage), 0);
+              return (
+                <span
+                  key={p}
+                  className="session-ai"
+                  title={`${PROVIDER_INFO[p].label}: ${tokens.toLocaleString("en-US")} tokens this session`}
+                >
+                  <UiIcon name={PROVIDER_INFO[p].icon} className="session-ai-icon" />
+                  {compact(tokens)}
+                </span>
+              );
+            })}
           </span>
         </header>
       ) : (
@@ -314,9 +355,7 @@ function AgentTabs({
                 )}
               </div>
             ))}
-            <button className="agent-tab-add" title="New agent" aria-label="New agent" onClick={add}>
-              <UiIcon name="lucide:plus" className="agent-tab-add-icon" />
-            </button>
+            <AddAgentMenu onAdd={add} />
           </div>
         </header>
       )}
@@ -358,9 +397,9 @@ function AgentTabs({
                     ) : null;
                   })()}
                   {/* IA puis réglages de l'agent, à droite de l'en-tête */}
-                  <span className="agent-pane-ai" title="Claude Code">
-                    <UiIcon name="fast:claude-app" className="agent-pane-ai-icon" />
-                    Claude Code
+                  <span className="agent-pane-ai" title={PROVIDER_INFO[agent.provider].label}>
+                    <UiIcon name={PROVIDER_INFO[agent.provider].icon} className="agent-pane-ai-icon" />
+                    {PROVIDER_INFO[agent.provider].label}
                   </span>
                   <button
                     className="agent-pane-settings"
@@ -396,6 +435,7 @@ function AgentTabs({
                 </header>
               )}
               <AgentPaneBody
+                key={`${agent.provider}-${agent.switched ?? 0}`}
                 agent={agent}
                 workspace={workspaces[agent.id]}
                 activeFile={activeFile}
@@ -566,6 +606,7 @@ function AgentPaneBody({
     <ClaudeSession
       agentId={agent.id}
       index={agent.index}
+      providerId={agent.provider}
       saved={agent.saved}
       name={agent.name}
       color={agent.color}
@@ -581,6 +622,8 @@ function AgentPaneBody({
 
 interface SessionProps {
   agentId: string;
+  /** IA de la session : Claude Code, Codex ou Gemini. */
+  providerId: ProviderId;
   /** Ordre de création de l'agent : clé de son état enregistré. */
   index: number;
   /** Conversation d'une session précédente, à restaurer. */
@@ -636,7 +679,13 @@ interface StreamEvent {
   delta?: { type?: string; text?: string };
 }
 
-function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice, name, cwd, activeFile, onWorkingChange }: SessionProps) {
+function ClaudeSession({ agentId, index, providerId, saved, color, branch, isolated, notice, name, cwd, activeFile, onWorkingChange }: SessionProps) {
+  // IA de la session : modèles, noms et niveaux d'effort (ceux de Codex dépendent du compte).
+  const ai = PROVIDERS[providerId];
+  const isCodex = providerId === "codex";
+  const isGemini = providerId === "gemini";
+  const codexModels = useCodexModels(isCodex);
+  const aiModels = isCodex ? toAgentModels(codexModels) : ai.models;
   // Session active, `null` tant que le processus n'est pas prêt ou après sa fin.
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>(() => restoreItems(saved?.items));
@@ -645,6 +694,11 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [model, setModel] = useState<string | null>(saved?.model ?? null);
+  // Niveaux d'effort : ceux de Codex sont filtrés selon le modèle choisi.
+  const supported = codexModels.find((m) => m.id === model)?.supportedReasoningEfforts.map((e) => e.reasoningEffort);
+  const efforts = isCodex
+    ? CODEX_EFFORTS.filter((e) => e.id === null || !supported || supported.includes(e.id))
+    : effortsFor(providerId);
   const [effort, setEffort] = useState<string | null>(saved?.effort ?? null);
   // Ultracode activé : le mot-clé est ajouté à chaque message (sans relancer la session).
   const [ultracode, setUltracode] = useState(saved?.ultracode ?? false);
@@ -661,6 +715,8 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
   const lastPrompt = useRef<string | null>(null);
   // Tour arrêté par l'utilisateur (bouton Stop) : sa fin n'est ni une erreur ni une tâche terminée.
   const interrupted = useRef(false);
+  // Totaux de la session Claude Code (coût, jetons par modèle) au tour précédent.
+  const sessionTotals = useRef<SessionTotals | null>(null);
   // « Allow all » choisi : les demandes d'autorisation suivantes sont acceptées d'office.
   const allowAll = useRef(false);
   // Demandes de l'utilisateur, pour le résumé en une ligne de la conversation.
@@ -670,6 +726,7 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
   useEffect(() => {
     saveAgent(index, {
       name,
+      provider: providerId,
       conversation: conversation.current,
       model,
       effort,
@@ -678,7 +735,7 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
       prompts: prompts.current.slice(-20),
       items: items.slice(-MAX_SAVED_ITEMS),
     });
-  }, [index, name, items, model, effort, ultracode, systemPrompt]);
+  }, [index, name, providerId, items, model, effort, ultracode, systemPrompt]);
   const summarySeq = useRef(0);
   // Commande « / » du tour en cours, et texte de la réponse (pour /commit).
   const turnCommand = useRef<AgentCommand | null>(null);
@@ -700,12 +757,14 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
   workingChanged.current = onWorkingChange;
   useEffect(() => workingChanged.current(working), [working]);
   // Modèle affiché dans le panneau Agents : celui choisi, ou celui annoncé par Claude Code.
-  const modelLabel = model === null ? resolvedModel : (provider.models.find((m) => m.id === model)?.label ?? model);
+  const modelLabel = model === null ? resolvedModel : (aiModels.find((m) => m.id === model)?.label ?? model);
   // Lu par le gestionnaire des messages de Claude (installé une seule fois par session).
   const modelLabelRef = useRef(modelLabel);
   modelLabelRef.current = modelLabel;
   useEffect(() => updateAgent(agentId, { model: modelLabel, modelId: model }), [agentId, model, modelLabel]);
   useEffect(() => updateAgent(agentId, { effort }), [agentId, effort]);
+  // Session en cours : relie les tâches du planificateur (vérifications, previews) à l'agent.
+  useEffect(() => updateAgent(agentId, { sessionId }), [agentId, sessionId]);
   useEffect(() => updateAgent(agentId, { systemPrompt: systemPrompt ?? null }), [agentId, systemPrompt]);
   useEffect(() => {
     if (overLimit) push({ kind: "info", text: "Token limit reached: raise it in the agent's options to continue." });
@@ -800,7 +859,7 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
         case "system":
           if (typeof msg.session_id === "string") conversation.current = msg.session_id;
           if (msg.subtype === "init" && typeof msg.model === "string") {
-            const name = provider.formatModelName(msg.model);
+            const name = ai.formatModelName(msg.model);
             setResolvedModel(name);
             push({ kind: "info", text: `Session ready · ${name}` });
           }
@@ -842,7 +901,13 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
           endThinking();
           setDraft(null);
           setBusy(false);
-          addUsage(agentId, msg, provider.formatModelName, modelLabelRef.current);
+          if (providerId === "claude-code") {
+            const totals = sessionTotals.current;
+            sessionTotals.current = totalsOf(msg);
+            addUsage(agentId, perTurn(msg, totals), ai.formatModelName, modelLabelRef.current);
+          } else {
+            addUsage(agentId, msg, ai.formatModelName, modelLabelRef.current);
+          }
           if (interrupted.current) {
             interrupted.current = false;
             turnCommand.current = null;
@@ -904,14 +969,16 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
     });
 
     // acceptEdits : l'agent modifie les fichiers sans demander ; tout est versionné par git.
-    const started = claude.start(id, cwd, {
-      permissionMode: "acceptEdits",
-      model,
-      effort,
-      // Une fois défini (même retiré), transmis à chaque démarrage pour remplacer l'ancien.
-      systemPrompt: systemPrompt === undefined ? null : (systemPrompt ?? ""),
-      resume: conversation.current,
-    }).then(
+    // Une fois défini (même retiré), transmis à chaque démarrage pour remplacer l'ancien.
+    sessionTotals.current = null;
+    const prompt = systemPrompt === undefined ? null : (systemPrompt ?? "");
+    const started = (
+      isCodex
+        ? codex.start(id, cwd, { model, effort, systemPrompt: prompt, resume: conversation.current })
+        : isGemini
+          ? gemini.start(id, cwd, { model, systemPrompt: prompt, resume: conversation.current })
+          : claude.start(id, cwd, { permissionMode: "acceptEdits", model, effort, systemPrompt: prompt, resume: conversation.current })
+    ).then(
       () => {
         if (!disposed) setSessionId(id);
       },
@@ -932,7 +999,7 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
 
   const changeModel = (next: string | null) => {
     if (next === model) return;
-    const label = provider.models.find((m) => m.id === next)?.label ?? next;
+    const label = aiModels.find((m) => m.id === next)?.label ?? next;
     push({ kind: "info", text: `Model: ${label}` });
     setBusy(false);
     // Le modèle réel sera annoncé à nouveau par la prochaine session.
@@ -941,7 +1008,7 @@ function ClaudeSession({ agentId, index, saved, color, branch, isolated, notice,
   };
   const changeEffort = (next: string | null) => {
     if (next === effort) return;
-    const label = EFFORTS.find((e) => e.id === next)?.label ?? next;
+    const label = efforts.find((e) => e.id === next)?.label ?? next;
     push({ kind: "info", text: `Effort: ${label}` });
     setBusy(false);
     setEffort(next);
@@ -1035,7 +1102,7 @@ Agent: ${reply.slice(0, 1500)}`;
     turnText.current = "";
     const base = parsed ? parsed.command.prompt(parsed.args) : text;
     // /ultracode contient déjà le mot-clé ; l'option l'ajoute aux autres messages.
-    const prompt = ultracode && parsed?.command.name !== "ultracode" ? withUltracode(base) : base;
+    const prompt = ultracode && providerId === "claude-code" && parsed?.command.name !== "ultracode" ? withUltracode(base) : base;
     lastPrompt.current = text;
     setBusy(true);
     push({
@@ -1043,7 +1110,7 @@ Agent: ${reply.slice(0, 1500)}`;
       text: attachments.length ? `${text}\nContext: ${attachments.map((a) => a.name).join(", ")}` : text,
     });
     try {
-      await claude.send(sessionId, provider.formatPrompt(prompt, attachments));
+      await claude.send(sessionId, ai.formatPrompt(prompt, attachments));
     } catch (err) {
       setBusy(false);
       push({ kind: "error", text: String(err) });
@@ -1063,7 +1130,19 @@ Agent: ${reply.slice(0, 1500)}`;
           ) : item.kind === "tool" ? (
             <ToolRow key={item.id} name={item.name} input={item.input} status={item.status} />
           ) : item.kind === "step" ? (
-            <StepRow key={item.id} stage={item.stage} label={item.label} status={item.status} detail={item.detail} />
+            <StepRow
+              key={item.id}
+              stage={item.stage}
+              label={item.label}
+              status={item.status}
+              detail={item.detail}
+              // Build cassé sur la branche principale : l'agent vérifie ses dépendances (/deps).
+              onCheckDeps={
+                item.stage === "build" && item.status === "error" && running && !busy
+                  ? () => submit(`/deps ${(item.detail ?? "").slice(-3000)}`.trim(), [])
+                  : undefined
+              }
+            />
           ) : item.kind === "permission" ? (
             <PermissionCard
               key={item.id}
@@ -1123,16 +1202,17 @@ Agent: ${reply.slice(0, 1500)}`;
       </div>
       <div className="claude-input">
         <Composer
-          models={provider.models}
+          models={aiModels}
           model={model}
           // Seul le modèle par défaut a besoin d'être précisé ; il est réinitialisé à chaque changement.
           resolvedModel={model === null ? resolvedModel : null}
           onModelChange={changeModel}
-          efforts={EFFORTS}
+          efforts={efforts}
           effort={effort}
           onEffortChange={changeEffort}
+          ai={PROVIDER_INFO[providerId]}
           ultracode={ultracode}
-          onUltracodeChange={(on) => {
+          onUltracodeChange={providerId !== "claude-code" ? undefined : (on) => {
             setUltracode(on);
             push({ kind: "info", text: on ? "Ultracode on: multi-agent orchestration for every message" : "Ultracode off" });
           }}
@@ -1209,7 +1289,20 @@ const STEP_ICONS: Record<string, string> = {
 };
 
 /** Étape de l'orchestrateur ; en cas d'erreur, le détail (sortie du build…) se déplie. */
-function StepRow({ stage, label, status, detail }: { stage: string; label: string; status: OrchestratorStatus; detail: string | null }) {
+function StepRow({
+  stage,
+  label,
+  status,
+  detail,
+  onCheckDeps,
+}: {
+  stage: string;
+  label: string;
+  status: OrchestratorStatus;
+  detail: string | null;
+  /** Build cassé : demander à l'agent de vérifier ses dépendances. */
+  onCheckDeps?: () => void;
+}) {
   const icon = status === "running" ? "lucide:loader-circle" : status === "error" ? "lucide:circle-alert" : (STEP_ICONS[stage] ?? "lucide:wrench");
   const row = (
     <>
@@ -1224,6 +1317,12 @@ function StepRow({ stage, label, status, detail }: { stage: string; label: strin
       <details className="activity error tl step-details">
         <summary>{row}</summary>
         <pre className="step-detail">{detail}</pre>
+        {onCheckDeps && (
+          <button className="secondary-button step-action" onClick={onCheckDeps}>
+            <UiIcon name="lucide:wrench" className="secondary-button-icon" />
+            Check dependencies
+          </button>
+        )}
       </details>
     );
   }
@@ -1382,4 +1481,73 @@ function restoreItems(saved: unknown[] | undefined): Item[] {
     }
   });
   return [...items, { kind: "info", text: "Conversation restored", at: Date.now() }];
+}
+
+/** Coût et jetons par modèle cumulés depuis le début d'une session Claude Code. */
+interface SessionTotals {
+  cost: number;
+  models: Record<string, Record<string, number>>;
+}
+
+const MODEL_FIELDS = ["inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens", "costUSD"];
+
+function totalsOf(result: Record<string, unknown>): SessionTotals {
+  const models: SessionTotals["models"] = {};
+  for (const [name, m] of Object.entries((result.modelUsage ?? {}) as Record<string, Record<string, unknown>>)) {
+    models[name] = Object.fromEntries(MODEL_FIELDS.map((f) => [f, typeof m[f] === "number" ? (m[f] as number) : 0]));
+  }
+  return { cost: typeof result.total_cost_usd === "number" ? result.total_cost_usd : 0, models };
+}
+
+/**
+ * Message `result` ramené au seul tour : Claude Code y donne le coût et les jetons
+ * par modèle cumulés sur la session (seul `usage` est propre au tour). Un total en
+ * baisse signale une nouvelle session : il vaut alors pour le tour entier.
+ */
+function perTurn(result: Record<string, unknown>, previous: SessionTotals | null): Record<string, unknown> {
+  const current = totalsOf(result);
+  if (!previous || current.cost < previous.cost) return result;
+  const modelUsage = Object.fromEntries(
+    Object.entries(current.models).map(([name, m]) => [
+      name,
+      Object.fromEntries(MODEL_FIELDS.map((f) => [f, Math.max(0, m[f] - (previous.models[name]?.[f] ?? 0))])),
+    ]),
+  );
+  return { ...result, total_cost_usd: current.cost - previous.cost, modelUsage };
+}
+
+/**
+ * Bouton d'ajout d'un agent : menu des IA (Claude Code, Codex, Gemini). `label` : texte
+ * à côté du « + » (en-tête du mode Vibe) ; sans, un simple « + » (onglets).
+ */
+function AddAgentMenu({ onAdd, label }: { onAdd: (provider: ProviderId) => void; label?: string }) {
+  return (
+    <Popover
+      label="New agent"
+      align={label ? "start" : "end"}
+      trigger={
+        <>
+          <UiIcon name="lucide:plus" className={label ? "agent-add-icon" : "agent-tab-add-icon"} />
+          {label}
+        </>
+      }
+      triggerClassName={label ? "agent-add-button" : "agent-tab-add"}
+    >
+      {(close) =>
+        PROVIDER_IDS.map((p) => (
+          <button
+            key={p}
+            className="popover-item"
+            onClick={() => {
+              close();
+              onAdd(p);
+            }}
+          >
+            <UiIcon name={PROVIDER_INFO[p].icon} className="popover-icon" />
+            <span className="popover-text">{PROVIDER_INFO[p].label}</span>
+          </button>
+        ))
+      }
+    </Popover>
+  );
 }

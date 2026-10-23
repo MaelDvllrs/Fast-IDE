@@ -37,7 +37,7 @@ fn candidate(label: impl Into<String>, command: impl Into<String>) -> RunCandida
 }
 
 /// Gestionnaire de paquets JavaScript d'après le fichier de verrouillage.
-fn package_manager(root: &Path) -> &'static str {
+pub(crate) fn package_manager(root: &Path) -> &'static str {
     if root.join("pnpm-lock.yaml").is_file() {
         "pnpm"
     } else if root.join("yarn.lock").is_file() {
@@ -49,7 +49,7 @@ fn package_manager(root: &Path) -> &'static str {
     }
 }
 
-fn read_json(path: &Path) -> Option<serde_json::Value> {
+pub(crate) fn read_json(path: &Path) -> Option<serde_json::Value> {
     serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
 }
 

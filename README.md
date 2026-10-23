@@ -106,3 +106,7 @@ npm run typecheck    # vérifie le TypeScript
   ne pas modifier ce dossier à la main.
 - Icônes d'interface (fichiers, dossiers…) : générées depuis Iconify, voir `src/components/fileIcons/mapping.json`
   puis `npm run icons`.
+
+## Licence
+
+FAST est distribué sous licence [MIT](LICENSE).

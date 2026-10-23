@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { EFFORTS } from "../agents/providers";
+import { effortsFor, providerIdOf } from "../agents/providers";
 import { limitTokens, requestEffortChange, setTokenLimit, type RosterAgent } from "../lib/agentRoster";
 import { Popover } from "./Composer";
 import { UiIcon } from "./fileIcons";
@@ -62,6 +62,7 @@ export function AgentOverview({ agent }: { agent: RosterAgent }) {
   // Curseur de limite affiché dans la carte (bouton « Manage limit »).
   const [editingLimit, setEditingLimit] = useState(false);
   const step = limit === null ? LIMIT_STEPS.length - 1 : Math.max(0, LIMIT_STEPS.findIndex((s) => s !== null && s >= limit));
+  const EFFORTS = effortsFor(agent.provider);
   const effortIndex = Math.max(0, EFFORTS.findIndex((e) => e.id === agent.effort));
   const effort = EFFORTS[effortIndex];
   // Niveaux réels (sans « Default ») pour la jauge d'effort.
@@ -184,7 +185,15 @@ export function AgentOverview({ agent }: { agent: RosterAgent }) {
           ratio={null}
           tone="info"
           caption={
-            <span title="API-equivalent price reported by Claude Code. Your Claude subscription isn't billed per token.">
+            <span
+              title={
+                providerIdOf(agent.provider) === "codex"
+                  ? "Codex doesn't report a price: your ChatGPT plan isn't billed per token."
+                  : providerIdOf(agent.provider) === "gemini"
+                    ? "Gemini doesn't report a price: your Google account isn't billed per token."
+                    : "API-equivalent price reported by Claude Code. Your Claude subscription isn't billed per token."
+              }
+            >
               API-equivalent price
             </span>
           }

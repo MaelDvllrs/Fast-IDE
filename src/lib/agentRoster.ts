@@ -31,6 +31,8 @@ export interface RosterAgent {
   id: string;
   name: string;
   color: string;
+  /** IA de l'agent (« claude-code », « codex »). */
+  provider: string;
   /** Libellé du modèle (ex. « Opus 5.5 »), `null` tant qu'il n'est pas connu. */
   model: string | null;
   /** Modèle choisi (identifiant du fournisseur), `null` = modèle par défaut du compte. */
@@ -48,6 +50,8 @@ export interface RosterAgent {
   /** Résumé en une ligne de la conversation (sur quoi l'agent travaille), `null` avant la première tâche. */
   summary: string | null;
   working: boolean;
+  /** Session de l'IA en cours (processus), `null` tant qu'elle n'a pas démarré. */
+  sessionId: string | null;
   usage: TokenUsage;
   /** Tours, du plus ancien au plus récent. */
   turns: Turn[];
@@ -63,11 +67,12 @@ const EMPTY_USAGE: TokenUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite:
 let agents: RosterAgent[] = [];
 // Mises à jour reçues avant la déclaration de l'agent (les effets des sessions
 // passent avant celui de la liste) : appliquées à son arrivée.
-type SessionPatch = Partial<Omit<RosterAgent, "id" | "name" | "color">>;
+type SessionPatch = Partial<Omit<RosterAgent, "id" | "name" | "color" | "provider">>;
 const pending = new Map<string, SessionPatch>();
 const listeners = new Set<(a: RosterAgent[]) => void>();
 const focusListeners = new Set<(id: string) => void>();
-const addListeners = new Set<() => void>();
+const addListeners = new Set<(provider?: string) => void>();
+const providerListeners = new Set<(id: string, provider: string) => void>();
 const settingsListeners = new Set<(id: string) => void>();
 const modelListeners = new Set<(id: string, modelId: string | null) => void>();
 const effortListeners = new Set<(id: string, effort: string | null) => void>();
@@ -82,7 +87,7 @@ function emit(next: RosterAgent[]) {
  * Liste des agents, dans l'ordre des onglets ; les agents absents de `list` sont
  * retirés. `initial` : valeurs d'un agent restauré (consommation, limite…), appliquées à sa création.
  */
-export function syncAgents(list: { id: string; name: string; color: string; initial?: SessionPatch }[]) {
+export function syncAgents(list: { id: string; name: string; color: string; provider: string; initial?: SessionPatch }[]) {
   emit(
     list.map((a) => {
       const current = agents.find((x) => x.id === a.id);
@@ -100,6 +105,7 @@ export function syncAgents(list: { id: string; name: string; color: string; init
         branch: null,
         summary: null,
         working: false,
+        sessionId: null,
         usage: EMPTY_USAGE,
         turns: [],
         cost: 0,
@@ -245,12 +251,24 @@ export function onOpenAgentSettings(listener: (id: string) => void) {
   };
 }
 
-/** Demande à la fenêtre IA d'ouvrir un nouvel agent. */
-export function requestNewAgent() {
-  addListeners.forEach((l) => l());
+/** Demande à la fenêtre IA d'ouvrir un nouvel agent, avec l'IA choisie (Claude Code par défaut). */
+export function requestNewAgent(provider?: string) {
+  addListeners.forEach((l) => l(provider));
 }
 
-export function onNewAgentRequest(listener: () => void) {
+/** Change l'IA d'un agent : sa session repart sur une nouvelle conversation. */
+export function requestProviderChange(id: string, provider: string) {
+  providerListeners.forEach((l) => l(id, provider));
+}
+
+export function onProviderChangeRequest(listener: (id: string, provider: string) => void) {
+  providerListeners.add(listener);
+  return () => {
+    providerListeners.delete(listener);
+  };
+}
+
+export function onNewAgentRequest(listener: (provider?: string) => void) {
   addListeners.add(listener);
   return () => {
     addListeners.delete(listener);

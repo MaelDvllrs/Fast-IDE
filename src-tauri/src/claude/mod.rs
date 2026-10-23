@@ -15,8 +15,10 @@ use tokio::{
 };
 
 use crate::{
+    codex::{self, CodexState},
     error::{AppError, AppResult},
-    platform,
+    gemini::{self, GeminiState},
+    platform, scheduler,
 };
 
 pub const EVENT: &str = "claude://event";
@@ -49,6 +51,20 @@ enum EventKind {
     Stderr(String),
     /// Fin du processus, avec son code de sortie si disponible.
     Exit(Option<i32>),
+}
+
+/// Message au format de Claude Code, pour la session `id` (utilisé aussi par les
+/// sessions Codex, traduites dans ce format).
+pub(crate) fn emit_message(app: &AppHandle, id: &str, message: serde_json::Value) {
+    emit(app, id, EventKind::Message(message));
+}
+
+pub(crate) fn emit_stderr(app: &AppHandle, id: &str, line: String) {
+    emit(app, id, EventKind::Stderr(line));
+}
+
+pub(crate) fn emit_exit(app: &AppHandle, id: &str, code: Option<i32>) {
+    emit(app, id, EventKind::Exit(code));
 }
 
 pub struct StartOptions {
@@ -226,14 +242,23 @@ pub async fn start(app: AppHandle, state: &ClaudeState, id: String, opts: StartO
     if let Some(effort) = &opts.effort {
         cmd.args(["--effort", effort]);
     }
-    if let Some(prompt) = &opts.system_prompt {
-        if !prompt.trim().is_empty() {
-            cmd.args(["--append-system-prompt", prompt]);
-        }
-        // Sans cela, une conversation reprise garde le prompt système enregistré à
-        // son premier message : une modification (ou un retrait) ne s'appliquerait pas.
-        cmd.args(["--system-prompt-snapshot", "off"]);
+    // Outils du planificateur (vérifications, builds, previews) : serveur MCP de FAST,
+    // autorisés d'office ; leurs instructions s'ajoutent au prompt système.
+    let mut system_prompt = opts.system_prompt.clone().unwrap_or_default();
+    if let Some(url) = scheduler::register(&app, &id, &opts.cwd) {
+        let config = serde_json::json!({ "mcpServers": { "fast": { "type": "http", "url": url } } });
+        let path = std::env::temp_dir().join(format!("fast-mcp-{}.json", id.replace(|c: char| !c.is_ascii_alphanumeric(), "-")));
+        std::fs::write(&path, config.to_string())?;
+        cmd.arg("--mcp-config").arg(path).args(["--allowedTools", "mcp__fast"]);
+        cmd.env("MCP_TOOL_TIMEOUT", scheduler::TOOL_TIMEOUT.as_millis().to_string());
+        system_prompt = format!("{}\n\n{system_prompt}", scheduler::agent_instructions(&app));
     }
+    if !system_prompt.trim().is_empty() {
+        cmd.args(["--append-system-prompt", system_prompt.trim()]);
+    }
+    // Sans cela, une conversation reprise garde le prompt système enregistré à
+    // son premier message : une modification (ou un retrait) ne s'appliquerait pas.
+    cmd.args(["--system-prompt-snapshot", "off"]);
     cmd.current_dir(&opts.cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -351,6 +376,21 @@ async fn forward_stdout(app: AppHandle, id: String, stdout: impl AsyncRead + Unp
     emit(&app, &id, EventKind::Exit(code));
 }
 
+/// Réponse à une demande d'autorisation, quelle que soit l'IA de la session.
+async fn answer_any(app: AppHandle, id: String, request_id: String, allow: bool, input: serde_json::Value, reason: Option<String>) {
+    let codex = app.state::<CodexState>();
+    if codex::owns(&codex, &id).await {
+        let _ = codex::answer_permission(&codex, &id, &request_id, allow).await;
+        return;
+    }
+    let gemini = app.state::<GeminiState>();
+    if gemini::owns(&gemini, &id).await {
+        let _ = gemini::answer_permission(&gemini, &id, &request_id, allow).await;
+        return;
+    }
+    let _ = answer_permission(&app.state::<ClaudeState>(), &id, request_id, allow, input, reason).await;
+}
+
 async fn forward_lines(
     app: AppHandle,
     id: String,
@@ -366,6 +406,21 @@ async fn forward_lines(
 }
 
 fn emit(app: &AppHandle, id: &str, event: EventKind) {
+    // Planificateur : fin de tour, fin de session, et commandes lourdes lancées dans le shell.
+    match &event {
+        EventKind::Message(message) if message["type"] == "result" => scheduler::turn_ended(app, id),
+        EventKind::Message(message) if message["type"] == "control_request" && message["request"]["subtype"] == "can_use_tool" => {
+            let request = &message["request"];
+            if let Some((allow, reason)) = scheduler::guard(request["tool_name"].as_str().unwrap_or_default(), &request["input"]) {
+                let request_id = message["request_id"].as_str().unwrap_or_default().to_owned();
+                let input = request["input"].clone();
+                tauri::async_runtime::spawn(answer_any(app.clone(), id.to_owned(), request_id, allow, input, reason));
+                return;
+            }
+        }
+        EventKind::Exit(_) => scheduler::session_ended(app, id),
+        _ => {}
+    }
     let payload = ClaudeEvent {
         session_id: id.to_owned(),
         event,

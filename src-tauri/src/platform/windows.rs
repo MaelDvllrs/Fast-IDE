@@ -111,6 +111,67 @@ pub fn unlink_dir(link: &std::path::Path) -> crate::error::AppResult<()> {
     Ok(std::fs::remove_dir(link)?)
 }
 
+/// Rien à faire : `taskkill /T` suit la parenté des processus.
+pub fn own_process_tree(_cmd: &mut tokio::process::Command) {}
+
+/// Job Object propre à une tâche : ses descendants y entrent avec elle et y
+/// restent, même quand leur parent s'est terminé.
+pub struct ProcessTree {
+    job: windows_sys::Win32::Foundation::HANDLE,
+    pid: u32,
+}
+
+// SAFETY : le handle du job n'est utilisé que par des appels Win32 thread-safe.
+unsafe impl Send for ProcessTree {}
+unsafe impl Sync for ProcessTree {}
+
+impl ProcessTree {
+    pub fn attach(child: &tokio::process::Child) -> Option<Self> {
+        use windows_sys::Win32::{
+            Foundation::CloseHandle,
+            System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW},
+        };
+        let (handle, pid) = (child.raw_handle()?, child.id()?);
+        // SAFETY : job créé ici ; le handle du processus appartient à `child`, vivant.
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() {
+                return None;
+            }
+            if AssignProcessToJobObject(job, handle as _) == 0 {
+                CloseHandle(job);
+                return None;
+            }
+            Some(Self { job, pid })
+        }
+    }
+
+    /// Sans `force` : `taskkill /T` demande aux programmes de se fermer ; avec,
+    /// tout le job est arrêté d'office.
+    pub fn stop(&self, force: bool) {
+        if force {
+            // SAFETY : handle valide jusqu'au `Drop`.
+            unsafe { windows_sys::Win32::System::JobObjects::TerminateJobObject(self.job, 1) };
+        } else {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("taskkill")
+                .args(["/PID", &self.pid.to_string(), "/T"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+        }
+    }
+}
+
+impl Drop for ProcessTree {
+    fn drop(&mut self) {
+        // Fermer le handle ne tue rien (pas de « kill on close ») : `stop` le fait.
+        // SAFETY : handle créé par `attach`, fermé une seule fois.
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(self.job) };
+    }
+}
+
 /// Empêche l'apparition d'une fenêtre console pour chaque processus enfant.
 pub fn configure_command(cmd: &mut tokio::process::Command) {
     cmd.creation_flags(CREATE_NO_WINDOW);

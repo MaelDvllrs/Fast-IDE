@@ -207,7 +207,10 @@
     "lucide:rotate-ccw",
     "lucide:mic",
     "lucide:bell",
-    "lucide:zap"
+    "lucide:zap",
+    "lucide:server",
+    "lucide:list-checks",
+    "lucide:flask-conical"
   ],
   "$strokeWidthsComment": "Épaisseur de trait imposée par jeu d'icônes (Lucide est dessiné à 2 par défaut).",
   "strokeWidths": {

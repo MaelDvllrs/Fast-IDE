@@ -19,7 +19,7 @@ import { TitleBar } from "./components/TitleBar";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { useOpenFiles } from "./hooks/useOpenFiles";
 import { onOpenAgentSettings } from "./lib/agentRoster";
-import { appWindow, workspace } from "./lib/ipc";
+import { appWindow, fs as files, patchSettings, settings, workspace } from "./lib/ipc";
 import type { Menu } from "./lib/menu";
 import { platform } from "./platform";
 
@@ -102,7 +102,24 @@ export function App() {
     setRoot(path);
     setView("explorer");
     tabs.closeAll();
+    patchSettings({ lastProject: path }).catch(() => {});
   };
+
+  // Au lancement : le dernier projet ouvert, s'il existe toujours (sinon l'écran d'accueil).
+  const reopened = useRef(false);
+  useEffect(() => {
+    if (reopened.current) return;
+    reopened.current = true;
+    settings
+      .load()
+      .then((s) => s.lastProject && files.readDir(s.lastProject).then(() => s.lastProject!))
+      .then((path) => {
+        if (!path) return;
+        setRoot((current) => current ?? path);
+        setView((current) => current ?? "explorer");
+      })
+      .catch(() => {});
+  }, []);
 
   const openFolder = () =>
     run(async () => {

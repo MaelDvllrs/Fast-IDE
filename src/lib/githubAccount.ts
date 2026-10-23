@@ -1,7 +1,7 @@
 // Compte GitHub connecté, partagé par toute l'interface (préférences, panneau
 // Git, dialogues) : une connexion ou déconnexion se voit partout à la fois.
 import { useEffect, useState } from "react";
-import { github, type GithubAccount } from "./ipc";
+import { github, patchSettings, settings, type GithubAccount } from "./ipc";
 
 type AccountState = { loading: boolean; account: GithubAccount | null };
 
@@ -14,15 +14,36 @@ function set(next: AccountState) {
   listeners.forEach((l) => l(state));
 }
 
-export function refreshAccount() {
+/** Garde le compte en cache (préférences) pour l'afficher dès le prochain lancement. */
+const cache = (account: GithubAccount | null) => patchSettings({ githubAccount: account }).catch(() => {});
+
+export async function refreshAccount() {
   loaded = true;
+  // 1. Le compte du dernier lancement, affiché sans attendre le réseau.
+  const cached = await settings.load().then((s) => s.githubAccount ?? null, () => null);
+  if (cached && state.loading) set({ loading: false, account: cached });
+  // 2. La réponse de GitHub : à jour, ou plus connecté (jeton révoqué, déconnexion).
   return github.account().then(
-    (account) => set({ loading: false, account }),
-    () => set({ loading: false, account: null }),
+    (account) => {
+      set({ loading: false, account });
+      cache(account);
+    },
+    (err) => {
+      // Jeton refusé par GitHub (session expirée, accès retiré) : FAST est déconnecté.
+      if (String(err).includes("session expired")) {
+        setAccount(null);
+        return;
+      }
+      // Pas de réseau : le compte en cache reste affiché.
+      set({ loading: false, account: cached });
+    },
   );
 }
 
-export const setAccount = (account: GithubAccount | null) => set({ loading: false, account });
+export const setAccount = (account: GithubAccount | null) => {
+  set({ loading: false, account });
+  cache(account);
+};
 
 export async function signOut() {
   await github.signOut();

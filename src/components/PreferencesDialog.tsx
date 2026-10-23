@@ -1,18 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { signOut, useGithubAccount } from "../lib/githubAccount";
-import { project, settings, type RunCandidate } from "../lib/ipc";
+import {
+  DEFAULT_SCHEDULER_LIMITS,
+  patchSettings,
+  project,
+  settings,
+  type RunCandidate,
+  type SchedulerLimits,
+} from "../lib/ipc";
 import { RUN_CONFIG_EVENT } from "../lib/runner";
 import { THEMES, applyTheme, currentTheme } from "../theme";
 import { UiIcon } from "./fileIcons";
 import { UpdateCheck } from "./Updates";
 import { GithubSignIn } from "./GithubSignIn";
 
-export type PreferencesSection = "appearance" | "project" | "accounts" | "updates";
+export type PreferencesSection = "appearance" | "project" | "scheduler" | "accounts" | "updates";
 type Section = PreferencesSection;
 
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: "appearance", label: "Appearance", icon: "lucide:palette" },
   { id: "project", label: "Project", icon: "lucide:hammer" },
+  { id: "scheduler", label: "Servers & checks", icon: "lucide:server" },
   { id: "accounts", label: "Accounts", icon: "lucide:github" },
   { id: "updates", label: "Updates", icon: "lucide:download" },
 ];
@@ -64,6 +72,7 @@ export function PreferencesDialog({
           </header>
           {section === "appearance" && <AppearanceSettings />}
           {section === "project" && <ProjectSettings root={root} />}
+          {section === "scheduler" && <SchedulerSettings />}
           {section === "accounts" && <AccountSettings />}
           {section === "updates" && <UpdateSettings />}
         </section>
@@ -77,10 +86,7 @@ function AppearanceSettings() {
 
   const select = (id: string) => {
     setTheme(applyTheme(id));
-    settings
-      .load()
-      .then((current) => settings.save({ ...current, theme: id }))
-      .catch(() => {});
+    patchSettings({ theme: id }).catch(() => {});
   };
 
   return (
@@ -290,10 +296,7 @@ function UpdateSettings() {
 
   const toggle = (on: boolean) => {
     setAuto(on);
-    settings
-      .load()
-      .then((current) => settings.save({ ...current, autoUpdate: on }))
-      .catch(() => {});
+    patchSettings({ autoUpdate: on }).catch(() => {});
   };
 
   return (
@@ -324,6 +327,95 @@ function UpdateSettings() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Opérations du planificateur : serveur nécessaire, et limite réglable par projet. */
+const SCHEDULER_ROWS: { key: keyof SchedulerLimits; label: string; server: string; note?: string }[] = [
+  { key: "typecheck", label: "Type checking", server: "No" },
+  { key: "lint", label: "ESLint", server: "No" },
+  { key: "test", label: "Unit tests", server: "Usually no" },
+  { key: "integrationTest", label: "Integration tests", server: "Sometimes", note: "Takes a server when the tests need one" },
+  { key: "servers", label: "Preview (dev server, hot reload)", server: "Yes", note: "Servers per project, E2E tests included" },
+  { key: "e2e", label: "E2E tests (browser)", server: "Yes, usually" },
+  { key: "build", label: "Production build", server: "No, but heavy" },
+];
+
+/** Limites du planificateur : combien de vérifications, builds et serveurs les agents lancent à la fois. */
+function SchedulerSettings() {
+  const [limits, setLimits] = useState<SchedulerLimits | null>(null);
+
+  useEffect(() => {
+    settings.load().then(
+      (s) => setLimits({ ...DEFAULT_SCHEDULER_LIMITS, ...s.scheduler }),
+      () => setLimits(DEFAULT_SCHEDULER_LIMITS),
+    );
+  }, []);
+
+  const change = (key: keyof SchedulerLimits, value: number) => {
+    if (!limits || !Number.isFinite(value)) return;
+    const next = { ...limits, [key]: Math.min(8, Math.max(1, Math.round(value))) };
+    setLimits(next);
+    patchSettings({ scheduler: next }).catch(() => {});
+  };
+
+  return (
+    <div className="preferences-body">
+      <div className="setting-text">
+        <div className="setting-label">Agent tasks</div>
+        <div className="setting-description">
+          Agents run checks, builds and dev servers through FAST, which queues them so the machine stays responsive. Limits apply
+          per project and are shared by all agents; agents can never raise them. Your Run button is not limited.
+        </div>
+      </div>
+
+      <table className="scheduler-table">
+        <thead>
+          <tr>
+            <th>Operation</th>
+            <th>Needs a server</th>
+            <th>At the same time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {SCHEDULER_ROWS.map((row) => (
+            <tr key={row.key}>
+              <td>
+                {row.label}
+                {row.note && <div className="scheduler-table-note">{row.note}</div>}
+              </td>
+              <td className="scheduler-table-server">{row.server}</td>
+              <td>
+                <input
+                  className="setting-input scheduler-table-input"
+                  type="number"
+                  min={1}
+                  max={8}
+                  value={limits?.[row.key] ?? ""}
+                  disabled={!limits}
+                  onChange={(e) => change(row.key, e.target.valueAsNumber)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="setting-text setting-group">
+        <div className="setting-label">Priority</div>
+        <div className="setting-description">When tasks wait, they start in this order:</div>
+      </div>
+      <ol className="scheduler-priorities">
+        <li>Preview explicitly requested by you</li>
+        <li>Quick check before an agent finishes its task</li>
+        <li>Unit tests and static checks</li>
+        <li>Full build and E2E tests</li>
+      </ol>
+      <div className="setting-description">
+        Each task's processes are all stopped when it ends. A preview an agent starts for itself stops at the end of its turn at the
+        latest.
+      </div>
     </div>
   );
 }

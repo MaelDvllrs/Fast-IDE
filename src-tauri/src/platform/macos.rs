@@ -52,6 +52,32 @@ pub fn unlink_dir(link: &std::path::Path) -> crate::error::AppResult<()> {
 
 pub fn configure_command(_cmd: &mut tokio::process::Command) {}
 
+/// Groupe de processus propre : `kill -<pid>` atteint aussi tous les descendants.
+pub fn own_process_tree(cmd: &mut tokio::process::Command) {
+    cmd.process_group(0);
+}
+
+/// Groupe de processus de la tâche (créé par `own_process_tree`).
+pub struct ProcessTree {
+    pgid: u32,
+}
+
+impl ProcessTree {
+    pub fn attach(child: &tokio::process::Child) -> Option<Self> {
+        child.id().map(|pgid| Self { pgid })
+    }
+
+    /// SIGTERM à tout le groupe (fin propre), SIGKILL avec `force`.
+    pub fn stop(&self, force: bool) {
+        let signal = if force { "-KILL" } else { "-TERM" };
+        let _ = Command::new("kill")
+            .args([signal, "--", &format!("-{}", self.pgid)])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
 /// Shell de l'utilisateur, en mode login pour charger son profil. Un PTY Unix
 /// n'efface pas l'écran : le terminal écrit le message d'accueil lui-même.
 pub fn shell_launch(_banner: Option<&str>) -> super::ShellLaunch {

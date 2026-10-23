@@ -9,7 +9,9 @@ export interface SavedAgent {
   /** Ordre de création (0 = Prime) : donne le nom, la couleur et le worktree. */
   index: number;
   name: string;
-  /** Conversation Claude Code à reprendre (`--resume`). */
+  /** IA de l'agent ; absent dans les enregistrements anciens (= Claude Code). */
+  provider?: string;
+  /** Conversation à reprendre (Claude Code `--resume`, thread Codex). */
   conversation: string | null;
   model: string | null;
   effort: string | null;
@@ -80,6 +82,9 @@ export function setAgentOrder(indices: number[]) {
   order = indices;
   schedule();
 }
+
+/** État enregistré d'un agent (pour garder sa conversation affichée en changeant d'IA). */
+export const savedAgent = (index: number) => data.get(index);
 
 export function saveAgent(index: number, patch: Partial<SavedAgent>) {
   data.set(index, { ...data.get(index), ...patch, index });

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { COMMANDS, parseCommand } from "../agents/commands";
 import type { AgentModel, Attachment } from "../agents/providers";
 import { basename } from "../hooks/useOpenFiles";
@@ -15,6 +15,8 @@ interface Props {
   efforts?: { id: string | null; label: string; description?: string }[];
   effort?: string | null;
   onEffortChange?: (effort: string | null) => void;
+  /** IA de l'agent (icône et nom), affichée à côté de l'effort. */
+  ai?: { label: string; icon: string };
   /** Ultracode (orchestration multi-agents) ajouté à chaque message. */
   ultracode?: boolean;
   onUltracodeChange?: (on: boolean) => void;
@@ -40,6 +42,7 @@ export function Composer({
   efforts,
   effort = null,
   onEffortChange,
+  ai,
   ultracode = false,
   onUltracodeChange,
   root,
@@ -69,12 +72,30 @@ export function Composer({
 
   // Une ligne au départ, puis le champ grandit avec le texte (plafonné en CSS par
   // max-height). Fait en JS : `field-sizing: content` n'existe pas dans WebKit (macOS).
-  useLayoutEffect(() => {
+  const fitHeight = useCallback(() => {
     const el = input.current;
-    if (!el) return;
+    // Champ masqué (agent dans un autre onglet) : rien à mesurer, sinon il resterait à 0.
+    if (!el || el.offsetParent === null) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [text]);
+  }, []);
+
+  useLayoutEffect(fitHeight, [text, fitHeight]);
+
+  // Largeur changée (panneau redimensionné, mode Vibe, onglet réaffiché) : le texte
+  // se répartit autrement, la hauteur est recalculée.
+  useEffect(() => {
+    const el = input.current;
+    if (!el) return;
+    let width = -1;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      fitHeight();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fitHeight]);
 
   // Coller des fichiers ou une image (capture d'écran) : enregistrés dans le projet,
   // puis joints comme avec « Add files… ». Du texte seul reste un collage normal.
@@ -256,6 +277,12 @@ export function Composer({
         </Popover>
 
         <span className="composer-spacer" />
+
+        {ai && (
+          <span className="composer-ai" title={ai.label} aria-label={ai.label}>
+            <UiIcon name={ai.icon} className="composer-ai-icon" />
+          </span>
+        )}
 
         {efforts && onEffortChange && (
           <Popover

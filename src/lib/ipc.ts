@@ -53,12 +53,77 @@ export interface Settings {
   theme: string | null;
   /** Mise à jour automatique au lancement ; `null` = activée. */
   autoUpdate?: boolean | null;
+  /** Dernier projet ouvert, rouvert au lancement. */
+  lastProject?: string | null;
+  /** Compte GitHub (login, nom, avatar) affiché dès le lancement ; le jeton reste dans le trousseau. */
+  githubAccount?: GithubAccount | null;
+  /** Tâches lourdes des agents en même temps, par projet ; `null` = limites par défaut. */
+  scheduler?: SchedulerLimits | null;
 }
+
+/** Limites du planificateur (voir src-tauri/src/scheduler). */
+export interface SchedulerLimits {
+  /** Serveurs : preview, tests E2E (et tests d'intégration qui en demandent un). */
+  servers: number;
+  typecheck: number;
+  lint: number;
+  test: number;
+  integrationTest: number;
+  e2e: number;
+  build: number;
+}
+
+export const DEFAULT_SCHEDULER_LIMITS: SchedulerLimits = {
+  servers: 1,
+  typecheck: 2,
+  lint: 2,
+  test: 2,
+  integrationTest: 1,
+  e2e: 1,
+  build: 1,
+};
+
+export type SchedulerKind = "typecheck" | "lint" | "test" | "integration_test" | "e2e" | "build" | "preview";
+
+/** Tâche du planificateur : en cours ou en file. */
+export interface SchedulerTask {
+  id: number;
+  root: string;
+  sessionId: string;
+  kind: SchedulerKind;
+  status: "queued" | "running";
+  /** 1 = passe en premier. */
+  priority: number;
+  command: string;
+  userRequested: boolean;
+  /** Mise en file, ou démarrage (ms). */
+  since: number;
+  /** Adresse d'un serveur de preview, une fois démarré. */
+  url: string | null;
+}
+
+/** Planificateur des vérifications, builds et serveurs lancés par les agents. */
+export const scheduler = {
+  tasks: () => invoke<SchedulerTask[]>("scheduler_tasks"),
+  stop: (taskId: number) => invoke<void>("scheduler_stop", { taskId }),
+  onChange: (cb: (tasks: SchedulerTask[]) => void) => listen<SchedulerTask[]>("scheduler://event", (e) => cb(e.payload)),
+};
 
 export const settings = {
   load: () => invoke<Settings>("settings_load"),
   save: (value: Settings) => invoke<void>("settings_save", { settings: value }),
 };
+
+// Écritures des préférences les unes après les autres : deux changements
+// simultanés (thème, compte, projet…) ne s'écrasent pas.
+let settingsQueue: Promise<unknown> = Promise.resolve();
+
+/** Modifie quelques préférences sans toucher aux autres. */
+export function patchSettings(patch: Partial<Settings>): Promise<void> {
+  const next = settingsQueue.then(() => settings.load().then((current) => settings.save({ ...current, ...patch })));
+  settingsQueue = next.catch(() => {});
+  return next;
+}
 
 export const workspace = {
   pickFolder: () => invoke<string | null>("workspace_pick_folder"),
@@ -170,6 +235,63 @@ export interface ClaudeStatus {
   /** Formule : « pro », « max », « team »… */
   subscriptionType: string | null;
 }
+
+export interface CodexStatus {
+  installed: boolean;
+  /** Connecté à un compte ChatGPT (abonnement). */
+  loggedIn: boolean;
+  /** Mode de connexion annoncé par Codex (« ChatGPT », « API key »…). */
+  loginMethod: string | null;
+  /** Adresse du compte ChatGPT connecté. */
+  email: string | null;
+  /** Formule ChatGPT : « plus », « pro », « team »… */
+  plan: string | null;
+  installCommand: string;
+  loginCommand: string | null;
+}
+
+/** Modèle Codex du compte (réponse de `model/list`). */
+export interface CodexModel {
+  id: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string;
+  supportedReasoningEfforts: { reasoningEffort: string; description: string }[];
+}
+
+/** Codex (OpenAI). Une fois démarrée, une session se pilote avec `claude.send`, `claude.stop`… */
+export const codex = {
+  status: () => invoke<CodexStatus>("codex_status"),
+  logout: () => invoke<void>("codex_logout"),
+  models: () => invoke<CodexModel[]>("codex_models"),
+  start: (
+    sessionId: string,
+    cwd: string,
+    opts: { model?: string | null; effort?: string | null; systemPrompt?: string | null; resume?: string | null } = {},
+  ) => invoke<void>("codex_start", { sessionId, cwd, ...opts }),
+};
+
+export interface GeminiStatus {
+  installed: boolean;
+  /** Connecté avec un compte Google. */
+  loggedIn: boolean;
+  email: string | null;
+  installCommand: string;
+}
+
+/** Gemini CLI (Google). Une fois démarrée, une session se pilote avec `claude.send`, `claude.stop`… */
+export const gemini = {
+  status: () => invoke<GeminiStatus>("gemini_status"),
+  /** Ouvre la connexion Google dans le navigateur ; se termine une fois validée. */
+  login: () => invoke<void>("gemini_login"),
+  logout: () => invoke<void>("gemini_logout"),
+  start: (
+    sessionId: string,
+    cwd: string,
+    opts: { model?: string | null; systemPrompt?: string | null; resume?: string | null } = {},
+  ) => invoke<void>("gemini_start", { sessionId, cwd, ...opts }),
+};
 
 export const claude = {
   status: () => invoke<ClaudeStatus>("claude_status"),
