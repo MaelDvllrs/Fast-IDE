@@ -12,6 +12,7 @@ import { AgentMascot } from "./AgentMascot";
 import { Popover } from "./Composer";
 import { compact } from "./AgentOverview";
 import { UiIcon } from "./fileIcons";
+import { ProviderMenuItems } from "./ProviderMenu";
 import { SchedulerTasks } from "./SchedulerTasks";
 
 
@@ -76,21 +77,14 @@ export function AgentList({ onOpen }: { onOpen: (agentId: string) => void }) {
             }
             triggerClassName="thin-button"
           >
-            {(close) =>
-              (Object.keys(PROVIDER_INFO) as ProviderId[]).map((p) => (
-                <button
-                  key={p}
-                  className="popover-item"
-                  onClick={() => {
-                    close();
-                    requestNewAgent(p);
-                  }}
-                >
-                  <UiIcon name={PROVIDER_INFO[p].icon} className="popover-icon" />
-                  <span className="popover-text">{PROVIDER_INFO[p].label}</span>
-                </button>
-              ))
-            }
+            {(close) => (
+              <ProviderMenuItems
+                onPick={(p) => {
+                  close();
+                  requestNewAgent(p);
+                }}
+              />
+            )}
           </Popover>
         </div>
       )}

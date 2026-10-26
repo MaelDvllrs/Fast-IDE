@@ -515,14 +515,20 @@ interface PopoverProps {
   triggerClassName: string;
   /** Côté d'alignement du menu par rapport au bouton. */
   align?: "start" | "end";
+  /**
+   * `below` : le menu s'ouvre sous le bouton (boutons en haut d'une fenêtre), en
+   * position fixe pour ne pas être coupé par un conteneur qui masque son débordement.
+   */
+  placement?: "above" | "below";
   children: (close: () => void) => ReactNode;
 }
 
-/** Bouton qui ouvre un petit menu au-dessus de lui ; se ferme au clic extérieur ou avec Échap. */
-/** Menu déroulant ancré à son bouton (au-dessus par défaut). */
-export function Popover({ label, trigger, triggerClassName, align = "start", children }: PopoverProps) {
+/** Menu déroulant ancré à son bouton (au-dessus par défaut) ; se ferme au clic extérieur ou avec Échap. */
+export function Popover({ label, trigger, triggerClassName, align = "start", placement = "above", children }: PopoverProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  // Position du menu ouvert sous le bouton (coordonnées de la fenêtre).
+  const [below, setBelow] = useState<{ top: number; left?: number; right?: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -548,13 +554,26 @@ export function Popover({ label, trigger, triggerClassName, align = "start", chi
         aria-expanded={open}
         onClick={(e) => {
           e.stopPropagation();
+          if (!open && placement === "below") {
+            const rect = e.currentTarget.getBoundingClientRect();
+            setBelow(
+              align === "end"
+                ? { top: rect.bottom + 6, right: window.innerWidth - rect.right }
+                : { top: rect.bottom + 6, left: rect.left },
+            );
+          }
           setOpen(!open);
         }}
       >
         {trigger}
       </button>
       {open && (
-        <div className={`popover ${align}`} role="menu" onClick={(e) => e.stopPropagation()}>
+        <div
+          className={placement === "below" ? "popover below" : `popover ${align}`}
+          style={placement === "below" && below ? below : undefined}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+        >
           {children(() => setOpen(false))}
         </div>
       )}

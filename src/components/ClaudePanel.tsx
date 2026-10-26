@@ -50,6 +50,7 @@ import {
 import { runInTerminal } from "../lib/terminalBus";
 import { AgentMascot } from "./AgentMascot";
 import { Popover } from "./Composer";
+import { ProviderMenuItems } from "./ProviderMenu";
 import { Markdown } from "./Markdown";
 import { compact } from "./AgentOverview";
 import { Composer } from "./Composer";
@@ -1525,6 +1526,8 @@ function AddAgentMenu({ onAdd, label }: { onAdd: (provider: ProviderId) => void;
     <Popover
       label="New agent"
       align={label ? "start" : "end"}
+      // En haut de la fenêtre (onglets, en-tête du mode Vibe) : le menu s'ouvre vers le bas.
+      placement="below"
       trigger={
         <>
           <UiIcon name="lucide:plus" className={label ? "agent-add-icon" : "agent-tab-add-icon"} />
@@ -1533,21 +1536,14 @@ function AddAgentMenu({ onAdd, label }: { onAdd: (provider: ProviderId) => void;
       }
       triggerClassName={label ? "agent-add-button" : "agent-tab-add"}
     >
-      {(close) =>
-        PROVIDER_IDS.map((p) => (
-          <button
-            key={p}
-            className="popover-item"
-            onClick={() => {
-              close();
-              onAdd(p);
-            }}
-          >
-            <UiIcon name={PROVIDER_INFO[p].icon} className="popover-icon" />
-            <span className="popover-text">{PROVIDER_INFO[p].label}</span>
-          </button>
-        ))
-      }
+      {(close) => (
+        <ProviderMenuItems
+          onPick={(p) => {
+            close();
+            onAdd(p);
+          }}
+        />
+      )}
     </Popover>
   );
 }

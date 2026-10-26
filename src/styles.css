@@ -1103,6 +1103,12 @@ body.resizing-row {
   background: var(--border-strong); /* même couleur que les barres de la fenêtre code */
 }
 
+/* Le « + » ouvre un menu : c'est son conteneur qui est aligné dans la barre */
+.popover-anchor:has(> .agent-tab-add) {
+  display: flex;
+  align-self: center;
+}
+
 .agent-tab-add {
   display: grid;
   place-items: center;
@@ -1894,6 +1900,12 @@ body.resizing-row {
   right: 0;
 }
 
+/* Ouvert sous son bouton, en position fixe (coordonnées posées par le composant) */
+.popover.below {
+  position: fixed;
+  bottom: auto;
+}
+
 .popover-item {
   display: flex;
   align-items: center;
@@ -1906,8 +1918,14 @@ body.resizing-row {
   color: var(--text);
 }
 
-.popover-item:hover:not(:disabled) {
+.popover-item:hover:not(:disabled, [aria-disabled="true"]) {
   background: var(--bg-hover);
+}
+
+/* Choix indisponible mais survolable (infobulle explicative) : IA non connectée… */
+.popover-item[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .popover-item:disabled {
