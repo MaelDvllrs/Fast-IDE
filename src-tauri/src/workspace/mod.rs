@@ -127,6 +127,8 @@ pub async fn create_agent(state: &WorkspaceState, root: PathBuf, id: String, ind
     }
 
     ensure_repo(&root).await?;
+    // Un `git push` lancé par un agent attendra l'accord de l'utilisateur.
+    crate::scheduler::push::install_hook(&root).await;
 
     let slug = format!("agent-{}", index + 1);
     let branch = format!("fast/{slug}");

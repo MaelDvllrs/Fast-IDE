@@ -2,13 +2,19 @@
 //! du système (Gestionnaire d'identifiants Windows, trousseau macOS) et appels
 //! à l'API GitHub (compte, liste et création de dépôts).
 //!
+//! Sous Windows, le jeton est aussi gardé chiffré (DPAPI, lié au compte Windows)
+//! dans le dossier de l'app : si le trousseau le perd, FAST le retrouve. Les
+//! événements de connexion sont notés dans `github.log`, au même endroit.
+//!
 //! Le device flow n'utilise pas de secret : FAST affiche un code, l'utilisateur
 //! le valide sur github.com, et FAST récupère le jeton en interrogeant GitHub.
 
 use std::{
+    io::Write,
+    path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Mutex,
+        Mutex, OnceLock,
     },
     time::Duration,
 };
@@ -16,7 +22,10 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, AppResult};
+use crate::{
+    error::{AppError, AppResult},
+    platform,
+};
 
 /// Client ID de l'OAuth App GitHub de FAST (public : le device flow n'a pas de secret).
 /// Peut être remplacé à la compilation par la variable `FAST_GITHUB_CLIENT_ID`.
@@ -39,6 +48,15 @@ pub struct GithubState {
     account: Mutex<Option<Account>>,
     /// Incrémenté à chaque connexion lancée ou annulée : une attente périmée s'arrête.
     login: AtomicU64,
+    /// Dossier de l'app : copie chiffrée du jeton et journal.
+    dir: OnceLock<PathBuf>,
+}
+
+impl GithubState {
+    /// Dossier de configuration de l'app (au lancement).
+    pub fn set_dir(&self, dir: PathBuf) {
+        let _ = self.dir.set(dir);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,27 +154,105 @@ fn keyring_entry() -> AppResult<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| AppError::msg(format!("system keychain unavailable: {e}")))
 }
 
-/// Jeton enregistré, lu une seule fois dans le trousseau.
+/// Note un événement de connexion dans `github.log` (jamais le jeton lui-même).
+fn log(state: &GithubState, event: &str) {
+    let Some(dir) = state.dir.get() else { return };
+    let path = dir.join("github.log");
+    // Journal court : recommencé au-delà de 64 Ko.
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 64 * 1024) {
+        let _ = std::fs::remove_file(&path);
+    }
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{secs} {event}");
+    }
+}
+
+fn backup_path(state: &GithubState) -> Option<PathBuf> {
+    state.dir.get().map(|d| d.join("github-token.bin"))
+}
+
+fn read_backup(state: &GithubState) -> Option<String> {
+    let data = std::fs::read(backup_path(state)?).ok()?;
+    String::from_utf8(platform::unprotect(&data)?).ok()
+}
+
+fn write_backup(state: &GithubState, token: &str) -> bool {
+    let (Some(path), Some(data)) = (backup_path(state), platform::protect(token.as_bytes())) else { return false };
+    path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(path, data).is_ok()
+}
+
+/// Jeton enregistré : trousseau, sinon copie chiffrée. Lu une fois ; une erreur de
+/// lecture du trousseau n'est pas mémorisée (nouvel essai au prochain appel).
 pub fn token(state: &GithubState) -> Option<String> {
     let mut cached = state.token.lock().unwrap();
-    if cached.is_none() {
-        *cached = Some(keyring_entry().ok().and_then(|e| e.get_password().ok()));
+    if let Some(token) = cached.as_ref() {
+        return token.clone();
     }
-    cached.clone().flatten()
+    let read = keyring_entry().map(|e| e.get_password());
+    let keyring_failed = match &read {
+        Ok(Ok(_)) | Ok(Err(keyring::Error::NoEntry)) => false,
+        Ok(Err(err)) => {
+            log(state, &format!("keychain read failed: {err}"));
+            true
+        }
+        Err(err) => {
+            log(state, &format!("keychain unavailable: {err}"));
+            true
+        }
+    };
+    let token = match read {
+        Ok(Ok(token)) => {
+            // Copie chiffrée d'un jeton enregistré avant qu'elle existe.
+            if backup_path(state).is_some_and(|p| !p.exists()) {
+                write_backup(state, &token);
+            }
+            Some(token)
+        }
+        _ => {
+            let backup = read_backup(state);
+            if let Some(token) = &backup {
+                log(state, "token missing from the keychain: restored from the encrypted copy");
+                if let Ok(entry) = keyring_entry() {
+                    let _ = entry.set_password(token);
+                }
+            } else if backup_path(state).is_some_and(|p| p.exists()) {
+                log(state, "encrypted copy unreadable");
+            }
+            backup
+        }
+    };
+    if token.is_some() || !keyring_failed {
+        *cached = Some(token.clone());
+    }
+    token
 }
 
 fn store_token(state: &GithubState, token: &str) -> AppResult<()> {
-    keyring_entry()?
-        .set_password(token)
-        .map_err(|e| AppError::msg(format!("could not save the GitHub token: {e}")))?;
+    let keyring = keyring_entry().and_then(|e| e.set_password(token).map_err(|e| AppError::msg(e.to_string())));
+    let backup = write_backup(state, token);
+    match (&keyring, backup) {
+        (Ok(()), true) => log(state, "signed in: token saved (keychain + encrypted copy)"),
+        (Ok(()), false) => log(state, "signed in: token saved (keychain)"),
+        (Err(err), true) => log(state, &format!("signed in: keychain write failed ({err}), token kept in the encrypted copy")),
+        (Err(err), false) => {
+            log(state, &format!("signed in: token could not be saved: {err}"));
+            return Err(AppError::msg(format!("could not save the GitHub token: {err}")));
+        }
+    }
     *state.token.lock().unwrap() = Some(Some(token.to_owned()));
     Ok(())
 }
 
+/// Déconnexion demandée par l'utilisateur : le jeton est oublié partout.
 pub fn sign_out(state: &GithubState) {
     if let Ok(entry) = keyring_entry() {
         let _ = entry.delete_credential();
     }
+    if let Some(path) = backup_path(state) {
+        let _ = std::fs::remove_file(path);
+    }
+    log(state, "signed out by the user");
     *state.token.lock().unwrap() = Some(None);
     *state.account.lock().unwrap() = None;
     state.login.fetch_add(1, Ordering::SeqCst);
@@ -292,14 +388,18 @@ async fn api(state: &GithubState, method: reqwest::Method, path: &str) -> AppRes
         .header("X-GitHub-Api-Version", "2022-11-28"))
 }
 
-/// Réponse en erreur → message lisible ; 401 = jeton révoqué, on se déconnecte.
+/// Réponse en erreur → message lisible ; 401 = jeton refusé.
 async fn check(state: &GithubState, response: reqwest::Response) -> AppResult<reqwest::Response> {
     let status = response.status();
     if status.is_success() {
         return Ok(response);
     }
+    // Jeton refusé : l'interface affiche FAST déconnecté, mais le jeton n'est pas
+    // effacé (un refus passager ne doit pas déconnecter pour de bon) ; il est
+    // réessayé au prochain lancement, et remplacé à la prochaine connexion.
     if status == reqwest::StatusCode::UNAUTHORIZED {
-        sign_out(state);
+        *state.account.lock().unwrap() = None;
+        log(state, "GitHub refused the token (401)");
         return Err(AppError::msg("Your GitHub session expired. Sign in again."));
     }
     #[derive(Deserialize)]
@@ -399,5 +499,24 @@ mod tests {
             "clone_url":"https://github.com/o/r.git","html_url":"https://github.com/o/r","updated_at":"2026-01-01T00:00:00Z"}"#;
         let repo: Repo = serde_json::from_str::<ApiRepo>(repo).unwrap().into();
         assert!(serde_json::to_string(&repo).unwrap().contains("\"cloneUrl\""));
+    }
+}
+
+
+#[cfg(all(test, windows))]
+mod backup_tests {
+    use super::{read_backup, write_backup, GithubState};
+
+    /// Copie chiffrée du jeton : relue telle quelle, illisible en clair sur le disque.
+    #[test]
+    fn keeps_an_encrypted_copy() {
+        let dir = std::env::temp_dir().join(format!("fast-github-backup-{}", std::process::id()));
+        let state = GithubState::default();
+        state.set_dir(dir.clone());
+        assert!(write_backup(&state, "gho_example_token"));
+        let raw = std::fs::read(dir.join("github-token.bin")).unwrap();
+        assert!(!String::from_utf8_lossy(&raw).contains("gho_example_token"));
+        assert_eq!(read_backup(&state).as_deref(), Some("gho_example_token"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

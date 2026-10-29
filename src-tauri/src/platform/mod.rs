@@ -142,6 +142,16 @@ pub fn release_new_children() {
     imp::release_new_children()
 }
 
+/// Chiffre des données pour l'utilisateur courant (DPAPI sous Windows) ; `None` si indisponible.
+pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
+    imp::protect(data)
+}
+
+/// Déchiffre des données chiffrées par [`protect`].
+pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
+    imp::unprotect(data)
+}
+
 /// Dossier personnel de l'utilisateur.
 pub fn home_dir() -> Option<PathBuf> {
     std::env::var_os(imp::HOME_VAR).map(PathBuf::from)

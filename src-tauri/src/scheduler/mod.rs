@@ -24,6 +24,7 @@
 
 mod commands;
 mod mcp;
+pub mod push;
 
 use std::{
     collections::HashMap,
@@ -692,12 +693,14 @@ fn agent_for<R: Runtime>(app: &AppHandle<R>, token: &str) -> Option<Agent> {
 /// par l'utilisateur (il la regarde encore).
 pub fn turn_ended<R: Runtime>(app: &AppHandle<R>, session: &str) {
     cancel(app, |t| t.agent.session == session && !(t.kind == Kind::Preview && t.user_requested));
+    push::deny_session(session);
 }
 
 /// Session arrêtée : toutes ses tâches s'arrêtent et son adresse MCP est retirée.
 pub fn session_ended<R: Runtime>(app: &AppHandle<R>, session: &str) {
     state(app).agents.lock().unwrap().retain(|_, a| a.session != session);
     cancel(app, |t| t.agent.session == session);
+    push::deny_session(session);
 }
 
 /// Fermeture de l'app : tout s'arrête, sans attendre.
@@ -730,7 +733,15 @@ const TOOLS: &[&str] = &["run_check", "start_preview", "stop_preview", "preview_
 /// Demande d'autorisation d'un agent : un outil de FAST est autorisé d'office, une
 /// opération planifiée lancée dans le shell est refusée avec la marche à suivre.
 /// Rend la réponse à donner (`Some`), ou `None` pour laisser décider l'utilisateur.
-pub fn guard(tool: &str, input: &Value) -> Option<(bool, Option<String>)> {
+pub fn guard<R: Runtime>(app: &AppHandle<R>, session: &str, tool: &str, input: &Value) -> Option<(bool, Option<String>)> {
+    decide(tool, input, || {
+        let root = state(app).agents.lock().unwrap().values().find(|a| a.session == session).map(|a| a.root.clone());
+        root.is_some_and(|r| push::guarded(&r))
+    })
+}
+
+/// Décision de [`guard`] ; `push_guarded` : le hook pre-push protège le projet de l'agent.
+fn decide(tool: &str, input: &Value, push_guarded: impl FnOnce() -> bool) -> Option<(bool, Option<String>)> {
     let bare = tool.rsplit("__").next().unwrap_or(tool);
     if TOOLS.iter().any(|t| *t == bare || tool.starts_with(&format!("{t} ")) || tool.starts_with(&format!("{t}("))) {
         return Some((true, None));
@@ -738,7 +749,12 @@ pub fn guard(tool: &str, input: &Value) -> Option<(bool, Option<String>)> {
     if !matches!(tool, "Bash" | "PowerShell") {
         return None;
     }
-    let kind = commands::classify(input["command"].as_str()?)?;
+    let command = input["command"].as_str()?;
+    // `git push` seul : c'est le hook pre-push qui demande l'accord (une seule question).
+    if push::is_plain_push(command) {
+        return push_guarded().then_some((true, None));
+    }
+    let kind = commands::classify(command)?;
     let how = match kind {
         Kind::Preview => "call the `start_preview` tool of the `fast` MCP server (and `stop_preview` when you are done)".to_owned(),
         kind => format!("call the `run_check` tool of the `fast` MCP server with kind=\"{}\"", kind.id()),
@@ -813,8 +829,12 @@ mod tests {
 
     #[test]
     fn guards_agent_commands() {
+        let guard = |tool: &str, input: &Value| decide(tool, input, || true);
         assert_eq!(guard("mcp__fast__run_check", &Value::Null), Some((true, None)));
         assert_eq!(guard("Bash", &serde_json::json!({ "command": "git status" })), None);
+        // `git push` : autorisé ici, c'est le hook qui demande l'accord ; sans hook, l'utilisateur décide.
+        assert_eq!(guard("Bash", &serde_json::json!({ "command": "git push origin main" })), Some((true, None)));
+        assert_eq!(decide("Bash", &serde_json::json!({ "command": "git push" }), || false), None);
         let (allow, message) = guard("Bash", &serde_json::json!({ "command": "npm run dev" })).unwrap();
         assert!(!allow && message.unwrap().contains("start_preview"));
         assert_eq!(guard("Read", &serde_json::json!({})), None);

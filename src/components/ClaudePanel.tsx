@@ -848,7 +848,8 @@ function ClaudeSession({ agentId, index, providerId, saved, color, branch, isola
           if (request?.subtype !== "can_use_tool" || !requestId) return;
           const tool = request.tool_name ?? "tool";
           const input = request.input ?? {};
-          if (allowAll.current) {
+          // Un push n'est jamais accepté d'office : toujours l'accord explicite de l'utilisateur.
+          if (allowAll.current && tool !== "GitPush") {
             claude.permission(id, requestId, true, input).catch(() => {});
             return;
           }
@@ -1158,12 +1159,12 @@ Agent: ${reply.slice(0, 1500)}`;
                 // « Allow all » : les autres demandes encore en attente sont acceptées aussi.
                 if (all) {
                   for (const other of items) {
-                    if (other.kind === "permission" && other.status === "pending" && other.id !== item.id) {
+                    if (other.kind === "permission" && other.status === "pending" && other.id !== item.id && other.tool !== "GitPush") {
                       claude.permission(other.sessionId, other.id, true, other.input).catch(() => {});
                     }
                   }
                   updateItems(
-                    (x) => x.kind === "permission" && x.status === "pending",
+                    (x) => x.kind === "permission" && x.status === "pending" && x.tool !== "GitPush",
                     (x) => (x.kind === "permission" ? { ...x, status: "allowed" } : x),
                   );
                 }
@@ -1431,7 +1432,9 @@ function PermissionCard({ item, onAnswer }: { item: PermissionItem; onAnswer: (a
   const tool = provider.describeTool(item.tool, item.input);
   const command = typeof item.input.command === "string" ? item.input.command : null;
   const path = typeof item.input.file_path === "string" ? item.input.file_path : null;
-  const detail = command ?? path ?? null;
+  // Push : la commande, puis l'adresse du dépôt distant.
+  const remoteUrl = item.tool === "GitPush" && typeof item.input.url === "string" && item.input.url ? item.input.url : null;
+  const detail = [command ?? path, remoteUrl].filter(Boolean).join("\n") || null;
 
   return (
     <div className={`permission-card ${item.status} tl`}>
@@ -1445,9 +1448,12 @@ function PermissionCard({ item, onAnswer }: { item: PermissionItem; onAnswer: (a
           <button className="secondary-button" onClick={() => onAnswer(false, false)}>
             Deny
           </button>
-          <button className="secondary-button" onClick={() => onAnswer(true, true)}>
-            Allow all this session
-          </button>
+          {/* Publier sur GitHub : seulement au cas par cas */}
+          {item.tool !== "GitPush" && (
+            <button className="secondary-button" onClick={() => onAnswer(true, true)}>
+              Allow all this session
+            </button>
+          )}
           <button className="primary-button" onClick={() => onAnswer(true, false)}>
             <UiIcon name="lucide:check" className="primary-button-icon" />
             Allow

@@ -65,6 +65,42 @@ pub fn release_new_children() {
     }
 }
 
+/// Chiffre des données pour le compte Windows courant (DPAPI) : seul ce compte,
+/// sur cette machine, peut les déchiffrer.
+pub fn protect(data: &[u8]) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB};
+    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    // SAFETY : tampons valides pendant l'appel ; la sortie, allouée par Windows, est copiée puis libérée.
+    unsafe {
+        if CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), 0, &mut output) == 0 {
+            return None;
+        }
+        Some(take_blob(output))
+    }
+}
+
+/// Inverse de [`protect`].
+pub fn unprotect(data: &[u8]) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB};
+    let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    // SAFETY : comme `protect`.
+    unsafe {
+        if CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), 0, &mut output) == 0 {
+            return None;
+        }
+        Some(take_blob(output))
+    }
+}
+
+/// Copie un résultat de DPAPI et libère la mémoire allouée par Windows.
+unsafe fn take_blob(blob: windows_sys::Win32::Security::Cryptography::CRYPT_INTEGER_BLOB) -> Vec<u8> {
+    let bytes = std::slice::from_raw_parts(blob.pbData, blob.cbData as usize).to_vec();
+    windows_sys::Win32::Foundation::LocalFree(blob.pbData as _);
+    bytes
+}
+
 /// Numéro de build de Windows, lu dans le registre (`GetVersionEx` ment selon
 /// le manifeste de l'exécutable).
 pub fn windows_build() -> Option<u32> {

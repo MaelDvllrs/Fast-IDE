@@ -52,6 +52,15 @@ pub fn unlink_dir(link: &std::path::Path) -> crate::error::AppResult<()> {
 
 pub fn configure_command(_cmd: &mut tokio::process::Command) {}
 
+/// Pas de copie chiffrée hors du trousseau sur macOS (le trousseau suffit).
+pub fn protect(_data: &[u8]) -> Option<Vec<u8>> {
+    None
+}
+
+pub fn unprotect(_data: &[u8]) -> Option<Vec<u8>> {
+    None
+}
+
 /// Rien à faire : les processus enfants ne sont pas liés à l'app sur macOS.
 pub fn release_new_children() {}
 

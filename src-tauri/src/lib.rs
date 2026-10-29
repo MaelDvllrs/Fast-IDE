@@ -48,6 +48,10 @@ pub fn run() {
         .manage(scheduler::SchedulerState::default())
         // Serveur MCP du planificateur : les agents y lancent vérifications, builds et previews.
         .setup(|app| {
+            // Copie chiffrée du jeton GitHub et journal de connexion : dossier de l'app.
+            if let Ok(dir) = app.path().app_config_dir() {
+                app.state::<github::GithubState>().set_dir(dir);
+            }
             scheduler::serve(app.handle().clone());
             #[cfg(debug_assertions)]
             scheduler::debug_probe(app.handle().clone());

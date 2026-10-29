@@ -140,6 +140,12 @@ function describeClaudeTool(name: string, input: Record<string, unknown> | undef
     done: value ? `${verb[1]} ${value}` : verb[1],
   });
   switch (name) {
+    // `git push` d'un agent, arrêté par le hook pre-push de FAST en attendant l'accord de l'utilisateur.
+    case "GitPush": {
+      const refs = Array.isArray(i.refs) ? i.refs.join(", ") : "";
+      const where = typeof i.remote === "string" ? i.remote : "the remote";
+      return target(["Pushing to", "Pushed to"], refs ? `${where} (${refs})` : where, "lucide:cloud-upload");
+    }
     case "Read":
       return target(["Reading", "Read"], fileName(i.file_path), "lucide:file-text");
     case "Edit":

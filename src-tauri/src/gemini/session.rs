@@ -114,6 +114,11 @@ pub async fn start(app: AppHandle, state: &GeminiState, id: String, opts: StartO
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .kill_on_drop(true);
+    // Outils du planificateur et accord de l'utilisateur pour un `git push` (hook pre-push).
+    let mcp = crate::scheduler::register(&app, &id, &opts.cwd);
+    if let Some(url) = &mcp {
+        cmd.env(crate::scheduler::push::ENV, crate::scheduler::push::url(url));
+    }
     let mut child = cmd.spawn()?;
     let stdin = child.stdin.take().ok_or_else(|| AppError::msg("stdin unavailable"))?;
     let stdout = child.stdout.take().ok_or_else(|| AppError::msg("stdout unavailable"))?;
@@ -132,14 +137,14 @@ pub async fn start(app: AppHandle, state: &GeminiState, id: String, opts: StartO
     state.sessions.lock().await.insert(id.clone(), session.clone());
     tauri::async_runtime::spawn(read_loop(app.clone(), id.clone(), session.clone(), stdout));
 
-    if let Err(err) = open_session(&app, &id, &session, &opts).await {
+    if let Err(err) = open_session(&app, &id, &session, &opts, mcp).await {
         stop(state, &id).await;
         return Err(err);
     }
     Ok(())
 }
 
-async fn open_session(app: &AppHandle, id: &str, session: &Session, opts: &StartOptions) -> AppResult<()> {
+async fn open_session(app: &AppHandle, id: &str, session: &Session, opts: &StartOptions, mcp: Option<String>) -> AppResult<()> {
     let init = session
         .request(
             "initialize",
@@ -153,7 +158,7 @@ async fn open_session(app: &AppHandle, id: &str, session: &Session, opts: &Start
     // Outils du planificateur de FAST, si Gemini CLI accepte les serveurs MCP en HTTP.
     let mut mcp_servers = json!([]);
     if init["agentCapabilities"]["mcpCapabilities"]["http"] == true {
-        if let Some(url) = crate::scheduler::register(app, id, &opts.cwd) {
+        if let Some(url) = mcp {
             mcp_servers = json!([{ "type": "http", "name": "fast", "url": url, "headers": [] }]);
             let mut prompt = session.system_prompt.lock().await;
             *prompt = Some(format!("{}\n\n{}", crate::scheduler::agent_instructions(app), prompt.clone().unwrap_or_default()));

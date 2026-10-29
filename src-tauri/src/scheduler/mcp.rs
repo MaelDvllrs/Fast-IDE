@@ -88,9 +88,28 @@ async fn respond(stream: &mut BufReader<TcpStream>, status: &str, body: Option<&
     stream.flush().await
 }
 
+async fn respond_text(stream: &mut BufReader<TcpStream>, text: &str) -> std::io::Result<()> {
+    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n", text.len());
+    let stream = stream.get_mut();
+    stream.write_all(head.as_bytes()).await?;
+    stream.write_all(text.as_bytes()).await?;
+    stream.flush().await
+}
+
 async fn connection<R: Runtime>(app: AppHandle<R>, stream: TcpStream) {
     let mut stream = BufReader::new(stream);
     while let Some(request) = read_request(&mut stream).await {
+        // Hook pre-push d'un agent : la réponse de l'utilisateur, en texte (« allow » ou « deny »).
+        if let Some(token) = request.path.strip_prefix("/push/") {
+            let allowed = match agent_for(&app, token.trim_end_matches('/')) {
+                Some(agent) => super::push::request(&app, &agent, &String::from_utf8_lossy(&request.body)).await,
+                None => false,
+            };
+            if respond_text(&mut stream, if allowed { "allow" } else { "deny" }).await.is_err() {
+                return;
+            }
+            continue;
+        }
         let agent = request.path.strip_prefix("/mcp/").and_then(|token| agent_for(&app, token.trim_end_matches('/')));
         let result = match (request.method.as_str(), agent) {
             (_, None) => respond(&mut stream, "404 Not Found", None).await,

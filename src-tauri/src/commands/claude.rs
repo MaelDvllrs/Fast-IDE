@@ -82,6 +82,10 @@ pub async fn claude_permission(
     input: serde_json::Value,
     message: Option<String>,
 ) -> AppResult<()> {
+    // Push d'un agent, demandé par le hook pre-push (voir scheduler/push.rs).
+    if crate::scheduler::push::answer(&request_id, allow) {
+        return Ok(());
+    }
     if codex::owns(&codex_state, &session_id).await {
         return codex::answer_permission(&codex_state, &session_id, &request_id, allow).await;
     }

@@ -120,6 +120,11 @@ pub async fn start(app: AppHandle, state: &CodexState, id: String, opts: StartOp
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // Outils du planificateur et accord de l'utilisateur pour un `git push` (hook pre-push).
+    let mcp = crate::scheduler::register(&app, &id, &opts.cwd);
+    if let Some(url) = &mcp {
+        cmd.env(crate::scheduler::push::ENV, crate::scheduler::push::url(url));
+    }
     let mut child = cmd.spawn()?;
     let stdin = child.stdin.take().ok_or_else(|| AppError::msg("stdin unavailable"))?;
     let stdout = child.stdout.take().ok_or_else(|| AppError::msg("stdout unavailable"))?;
@@ -150,14 +155,14 @@ pub async fn start(app: AppHandle, state: &CodexState, id: String, opts: StartOp
     });
     tauri::async_runtime::spawn(read_loop(app.clone(), id.clone(), session.clone(), stdout));
 
-    if let Err(err) = open_thread(&app, &id, &session, &opts).await {
+    if let Err(err) = open_thread(&app, &id, &session, &opts, mcp).await {
         stop(state, &id).await;
         return Err(err);
     }
     Ok(())
 }
 
-async fn open_thread(app: &AppHandle, id: &str, session: &Session, opts: &StartOptions) -> AppResult<()> {
+async fn open_thread(app: &AppHandle, id: &str, session: &Session, opts: &StartOptions, mcp: Option<String>) -> AppResult<()> {
     session
         .request(
             "initialize",
@@ -173,7 +178,6 @@ async fn open_thread(app: &AppHandle, id: &str, session: &Session, opts: &StartO
         config["model_reasoning_effort"] = json!(effort);
     }
     // Outils du planificateur de FAST (vérifications, builds, previews).
-    let mcp = crate::scheduler::register(app, id, &opts.cwd);
     if let Some(url) = &mcp {
         config["mcp_servers"] = json!({ "fast": {
             "url": url,

@@ -1,6 +1,6 @@
 [package]
 name = "fast"
-version = "0.2.2"
+version = "0.2.3"
 description = "Fast, a minimalist IDE for coding with AI agents"
 edition = "2021"
 license = "MIT"
@@ -34,7 +34,8 @@ tauri-plugin-process = "2"
 # Dépendances propres à un OS : à déclarer ici plutôt que dans [dependencies].
 [target.'cfg(target_os = "windows")'.dependencies]
 # Job Object : les processus enfants (shells, Claude) meurent avec l'app.
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Threading"] }
+# DPAPI (Security_Cryptography) : copie chiffrée du jeton GitHub, liée au compte Windows.
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_System_JobObjects", "Win32_System_Registry", "Win32_System_Threading"] }
 # Jeton GitHub dans le Gestionnaire d'identifiants Windows.
 keyring = { version = "3", features = ["windows-native"] }
 # Dictée vocale : API WinRT Windows.Media.SpeechRecognition.

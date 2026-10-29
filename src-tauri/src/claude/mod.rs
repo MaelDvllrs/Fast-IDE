@@ -7,7 +7,7 @@
 use std::{collections::HashMap, path::PathBuf, process::Stdio};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin, Command},
@@ -55,7 +55,7 @@ enum EventKind {
 
 /// Message au format de Claude Code, pour la session `id` (utilisé aussi par les
 /// sessions Codex, traduites dans ce format).
-pub(crate) fn emit_message(app: &AppHandle, id: &str, message: serde_json::Value) {
+pub(crate) fn emit_message<R: Runtime>(app: &AppHandle<R>, id: &str, message: serde_json::Value) {
     emit(app, id, EventKind::Message(message));
 }
 
@@ -251,6 +251,8 @@ pub async fn start(app: AppHandle, state: &ClaudeState, id: String, opts: StartO
         std::fs::write(&path, config.to_string())?;
         cmd.arg("--mcp-config").arg(path).args(["--allowedTools", "mcp__fast"]);
         cmd.env("MCP_TOOL_TIMEOUT", scheduler::TOOL_TIMEOUT.as_millis().to_string());
+        // Un `git push` de l'agent attend l'accord de l'utilisateur (hook pre-push).
+        cmd.env(scheduler::push::ENV, scheduler::push::url(&url));
         system_prompt = format!("{}\n\n{system_prompt}", scheduler::agent_instructions(&app));
     }
     if !system_prompt.trim().is_empty() {
@@ -377,7 +379,7 @@ async fn forward_stdout(app: AppHandle, id: String, stdout: impl AsyncRead + Unp
 }
 
 /// Réponse à une demande d'autorisation, quelle que soit l'IA de la session.
-async fn answer_any(app: AppHandle, id: String, request_id: String, allow: bool, input: serde_json::Value, reason: Option<String>) {
+async fn answer_any<R: Runtime>(app: AppHandle<R>, id: String, request_id: String, allow: bool, input: serde_json::Value, reason: Option<String>) {
     let codex = app.state::<CodexState>();
     if codex::owns(&codex, &id).await {
         let _ = codex::answer_permission(&codex, &id, &request_id, allow).await;
@@ -405,13 +407,13 @@ async fn forward_lines(
     }
 }
 
-fn emit(app: &AppHandle, id: &str, event: EventKind) {
+fn emit<R: Runtime>(app: &AppHandle<R>, id: &str, event: EventKind) {
     // Planificateur : fin de tour, fin de session, et commandes lourdes lancées dans le shell.
     match &event {
         EventKind::Message(message) if message["type"] == "result" => scheduler::turn_ended(app, id),
         EventKind::Message(message) if message["type"] == "control_request" && message["request"]["subtype"] == "can_use_tool" => {
             let request = &message["request"];
-            if let Some((allow, reason)) = scheduler::guard(request["tool_name"].as_str().unwrap_or_default(), &request["input"]) {
+            if let Some((allow, reason)) = scheduler::guard(app, id, request["tool_name"].as_str().unwrap_or_default(), &request["input"]) {
                 let request_id = message["request_id"].as_str().unwrap_or_default().to_owned();
                 let input = request["input"].clone();
                 tauri::async_runtime::spawn(answer_any(app.clone(), id.to_owned(), request_id, allow, input, reason));
