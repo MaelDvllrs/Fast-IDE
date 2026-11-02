@@ -210,7 +210,9 @@
     "lucide:zap",
     "lucide:server",
     "lucide:list-checks",
-    "lucide:flask-conical"
+    "lucide:flask-conical",
+    "lucide:puzzle",
+    "lucide:trash-2"
   ],
   "$strokeWidthsComment": "Épaisseur de trait imposée par jeu d'icônes (Lucide est dessiné à 2 par défaut).",
   "strokeWidths": {

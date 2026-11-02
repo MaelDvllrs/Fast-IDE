@@ -7,6 +7,7 @@ pub mod fs;
 pub mod github;
 pub mod scm;
 pub mod settings;
+pub mod skills;
 pub mod speech;
 pub mod system;
 pub mod terminal;

@@ -102,6 +102,40 @@ export interface SchedulerTask {
   url: string | null;
 }
 
+export type SkillScope = "project" | "global";
+
+/** Skill installé (dossier avec un SKILL.md), chez une ou plusieurs IA. */
+export interface Skill {
+  /** Nom du dossier. */
+  id: string;
+  name: string;
+  description: string | null;
+  scope: SkillScope;
+  /** IA qui ont ce skill (« claude-code », « codex », « gemini »). */
+  ais: string[];
+  path: string;
+  /** Lien GitHub d'où FAST l'a installé. */
+  source: string | null;
+}
+
+/** Skill trouvé derrière un lien GitHub, avant installation. */
+export interface SkillCandidate {
+  /** Dossier dans le dépôt (`""` = racine). */
+  dir: string;
+  id: string;
+  name: string;
+  description: string | null;
+  files: number;
+}
+
+export const skills = {
+  list: (project: string | null) => invoke<Skill[]>("skills_list", { project }),
+  inspect: (link: string) => invoke<{ repo: string; candidates: SkillCandidate[] }>("skills_inspect", { link }),
+  install: (link: string, dirs: string[], scope: SkillScope, project: string | null, ais: string[]) =>
+    invoke<string[]>("skills_install", { link, dirs, scope, project, ais }),
+  remove: (id: string, scope: SkillScope, project: string | null) => invoke<void>("skills_remove", { id, scope, project }),
+};
+
 /** Planificateur des vérifications, builds et serveurs lancés par les agents. */
 export const scheduler = {
   tasks: () => invoke<SchedulerTask[]>("scheduler_tasks"),

@@ -1,7 +1,7 @@
 import { AccountMenu } from "./AccountMenu";
 import { UiIcon } from "./fileIcons";
 
-export type SidebarView = "explorer" | "search" | "git" | "ai" | "agents";
+export type SidebarView = "explorer" | "search" | "git" | "ai" | "skills" | "agents";
 
 // Icônes Lucide (trait de 1,6, voir mapping.json > strokeWidths).
 const ITEMS: { view: SidebarView; label: string; icon: string }[] = [
@@ -9,6 +9,7 @@ const ITEMS: { view: SidebarView; label: string; icon: string }[] = [
   { view: "search", label: "Search", icon: "lucide:search" },
   { view: "git", label: "Git", icon: "lucide:git-branch" },
   { view: "ai", label: "AI & Models", icon: "lucide:sparkles" },
+  { view: "skills", label: "Skills", icon: "lucide:puzzle" },
   { view: "agents", label: "Agents", icon: "fast:mascot" },
 ];
 

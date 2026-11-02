@@ -5242,3 +5242,175 @@ li:last-child > .scm-commit-row::before {
   align-self: flex-start;
   margin-top: 8px;
 }
+
+/* --- Panneau Skills ------------------------------------------------------- */
+.skills-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 0;
+  padding: 0 12px 20px;
+  overflow: auto;
+}
+
+.skills-install {
+  gap: 10px;
+}
+
+.skills-link {
+  width: 100%;
+  font-family: var(--font-code);
+}
+
+/* Projet ou tous les projets : deux boutons accolés */
+.skills-choice {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+}
+
+.skills-choice-item {
+  flex: 1;
+  height: 24px;
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--text-label);
+}
+
+.skills-choice-item.active {
+  background: var(--bg-active);
+  color: var(--text-strong);
+}
+
+.skills-choice-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.skills-ais {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.skills-ai {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.skills-ai input {
+  accent-color: var(--primary);
+}
+
+.skills-ai-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+}
+
+/* Choix parmi les skills d'un dépôt */
+.skills-candidates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skills-candidates ul {
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.skills-candidate {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 4px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.skills-candidate:hover {
+  background: var(--bg-hover);
+}
+
+.skills-candidate input {
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.skills-candidates-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.skills-section .provider-section-title {
+  margin-top: 0;
+}
+
+.skills-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.skills-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 6px;
+}
+
+.skills-row:hover {
+  background: var(--bg-hover);
+}
+
+.skills-row-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.skills-row-name,
+.skills-row-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-row-name {
+  color: var(--text-strong);
+}
+
+.skills-row-description {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.skills-row-ais {
+  display: flex;
+  flex-shrink: 0;
+  gap: 3px;
+}
+
+.skills-confirm {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.skills-confirm.danger {
+  color: var(--error);
+}

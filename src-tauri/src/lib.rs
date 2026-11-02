@@ -9,6 +9,7 @@ mod platform;
 mod scheduler;
 mod scm;
 mod settings;
+mod skills;
 mod speech;
 mod terminal;
 mod workspace;
@@ -127,6 +128,10 @@ pub fn run() {
             commands::terminal::terminal_resize,
             commands::terminal::terminal_stop,
             prepare_update_install,
+            commands::skills::skills_list,
+            commands::skills::skills_inspect,
+            commands::skills::skills_install,
+            commands::skills::skills_remove,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the Tauri application")

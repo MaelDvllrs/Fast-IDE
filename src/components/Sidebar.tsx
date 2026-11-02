@@ -4,6 +4,7 @@ import { AgentList } from "./AgentList";
 import { AgentsPanel } from "./AgentsPanel";
 import { FileTree } from "./FileTree";
 import { GitPanel } from "./GitPanel";
+import { SkillsPanel } from "./SkillsPanel";
 import { UiIcon } from "./fileIcons";
 
 interface Props {
@@ -82,6 +83,12 @@ function SidebarContent({
       return (
         <aside className="window sidebar" style={style}>
           <AgentsPanel />
+        </aside>
+      );
+    case "skills":
+      return (
+        <aside className="window sidebar" style={style}>
+          <SkillsPanel root={root} />
         </aside>
       );
     case "agents":
