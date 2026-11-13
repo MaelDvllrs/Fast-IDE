@@ -9,6 +9,7 @@ mod platform;
 mod scheduler;
 mod scm;
 mod settings;
+mod team;
 mod skills;
 mod speech;
 mod terminal;
@@ -128,6 +129,7 @@ pub fn run() {
             commands::terminal::terminal_resize,
             commands::terminal::terminal_stop,
             prepare_update_install,
+            commands::workspace::agent_team_sync,
             commands::skills::skills_list,
             commands::skills::skills_inspect,
             commands::skills::skills_install,

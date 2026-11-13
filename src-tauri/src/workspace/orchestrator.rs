@@ -7,11 +7,13 @@
 //! 1. le worktree d'intégration `.fast/integration` repart de la branche principale ;
 //! 2. chaque branche du lot y est fusionnée (Claude résout les conflits ; un
 //!    agent dont le conflit ne se résout pas est écarté) ;
-//! 3. un seul build pour tout le lot, dans ce worktree au cache chaud ;
+//! 3. un seul build pour tout le lot, dans ce worktree au cache chaud — après
+//!    l'installation des dépendances si une tâche en a ajouté (`deps.rs`) ;
 //! 4. build réussi : la branche principale avance en fast-forward ;
 //!    build cassé : lot de plusieurs tâches → reprise une par une pour isoler
 //!    la fautive ; tâche seule → Claude corrige, nouvel essai ;
-//! 5. les agents inactifs sont mis à jour sur la nouvelle branche principale.
+//! 5. les dépendances ajoutées sont installées dans le projet, et les agents
+//!    inactifs sont mis à jour sur la nouvelle branche principale.
 //!
 //! Tous les agents, Prime compris, ont leur worktree : seule cette boucle modifie
 //! la branche principale, et personne n'attend personne. Prime (l'agent principal)
@@ -25,15 +27,19 @@
 //! conflit ou un build cassé. Chaque étape est envoyée à l'interface
 //! (`orchestrator://event`), dans la conversation de l'agent concerné.
 
-use std::{path::Path, sync::atomic::Ordering};
+use std::{
+    path::Path,
+    sync::{atomic::Ordering, Arc, Mutex},
+};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
-use super::{build, busy_root_agent, ensure_integration, entry, git, idle_isolated, set_committing, AgentEntry, WorkspaceState};
+use super::{build, busy_root_agent, deps, ensure_integration, entry, git, idle_isolated, set_committing, AgentEntry, WorkspaceState};
 use crate::{
     claude,
     error::{AppError, AppResult},
+    team,
 };
 
 pub const EVENT: &str = "orchestrator://event";
@@ -68,9 +74,37 @@ pub struct Task {
     run_id: String,
     agent: AgentEntry,
     summary: Option<String>,
+    /// Travail partagé par l'agent (`share_work`), à annoncer une fois intégré.
+    share: Option<Share>,
 }
 
-fn report(app: &AppHandle, task: &Task, stage: &'static str, status: Status, label: impl Into<String>, detail: Option<String>) {
+/// Partage demandé par un agent : le message part vers les autres quand le
+/// commit `head` est sur la branche principale ; l'agent reçoit le résultat.
+#[derive(Clone)]
+struct Share {
+    message: String,
+    head: String,
+    reply: Arc<Mutex<Option<tokio::sync::oneshot::Sender<ShareOutcome>>>>,
+}
+
+/// Résultat d'un partage, rendu à l'agent qui l'a demandé.
+pub enum ShareOutcome {
+    /// Sur la branche principale ; message envoyé à ces coéquipiers.
+    Shared(Vec<String>),
+    /// Pas intégré (conflit, build cassé…) : rien n'a été envoyé.
+    NotIntegrated,
+    Failed(String),
+}
+
+impl Share {
+    fn answer(&self, outcome: ShareOutcome) {
+        if let Some(reply) = self.reply.lock().unwrap().take() {
+            let _ = reply.send(outcome);
+        }
+    }
+}
+
+fn report<R: Runtime>(app: &AppHandle<R>, task: &Task, stage: &'static str, status: Status, label: impl Into<String>, detail: Option<String>) {
     let event = StepEvent {
         agent_id: task.agent_id.clone(),
         run_id: task.run_id.clone(),
@@ -85,14 +119,14 @@ fn report(app: &AppHandle, task: &Task, stage: &'static str, status: Status, lab
 }
 
 /// Même étape pour toutes les tâches d'un lot.
-fn report_all(app: &AppHandle, tasks: &[Task], stage: &'static str, status: Status, label: &str, detail: Option<&str>) {
+fn report_all<R: Runtime>(app: &AppHandle<R>, tasks: &[Task], stage: &'static str, status: Status, label: &str, detail: Option<&str>) {
     for task in tasks {
         report(app, task, stage, status, label, detail.map(str::to_owned));
     }
 }
 
 /// Fin d'une tâche d'agent : commit immédiat (agent isolé), puis mise en file.
-pub fn task_finished(app: AppHandle, agent_id: String, summary: Option<String>) {
+pub fn task_finished<R: Runtime>(app: AppHandle<R>, agent_id: String, summary: Option<String>) {
     // Marqué tout de suite (avant que l'interface ne repasse l'agent en inactif) :
     // l'orchestrateur ne touche pas la branche principale avant le commit de l'agent du projet.
     set_committing(&app.state::<WorkspaceState>(), &agent_id, true);
@@ -103,7 +137,7 @@ pub fn task_finished(app: AppHandle, agent_id: String, summary: Option<String>) 
             return;
         };
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
-        let task = Task { run_id: format!("{agent_id}-{stamp}"), agent_id, agent, summary };
+        let task = Task { run_id: format!("{agent_id}-{stamp}"), agent_id, agent, summary, share: None };
 
         // Commit immédiat, sans attendre la file. Pour l'agent du dossier projet, le
         // verrou garantit que l'orchestrateur ne met pas la branche principale à jour en même temps.
@@ -132,15 +166,89 @@ pub fn task_finished(app: AppHandle, agent_id: String, summary: Option<String>) 
     });
 }
 
+/// Partage du travail d'un agent pendant sa tâche (outil `share_work`) : commit,
+/// intégration sur la branche principale, puis `message` envoyé aux autres agents.
+pub fn share_work<R: Runtime>(app: AppHandle<R>, agent_id: String, message: String) -> tokio::sync::oneshot::Receiver<ShareOutcome> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<WorkspaceState>();
+        let Some(agent) = entry(&state, &agent_id) else {
+            let _ = tx.send(ShareOutcome::Failed("this agent is not part of the project".into()));
+            return;
+        };
+        let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+        let summary = Some(format!("share: {}", message.lines().next().unwrap_or_default()));
+        let mut task = Task { run_id: format!("{agent_id}-share-{stamp}"), agent_id: agent_id.clone(), agent, summary, share: None };
+        if let Err(err) = commit(&app, &task).await {
+            report(&app, &task, "commit", Status::Error, "Could not commit", Some(err.to_string()));
+            let _ = tx.send(ShareOutcome::Failed(format!("could not commit your work: {err}")));
+            return;
+        }
+        let root = task.agent.root.clone();
+        // Sans git, tout le monde travaille dans le même dossier : rien à intégrer.
+        if task.agent.branch.is_none() {
+            let _ = tx.send(deliver_share(&app, &root, &agent_id, &message));
+            return;
+        }
+        let head = match git::ensure(&task.agent.cwd, &["rev-parse", "HEAD"]).await {
+            Ok(head) => head.trim().to_owned(),
+            Err(err) => {
+                let _ = tx.send(ShareOutcome::Failed(err.to_string()));
+                return;
+            }
+        };
+        // Déjà sur la branche principale (rien de nouveau depuis la dernière intégration).
+        if let Ok(main) = git::current_branch(&root).await {
+            if git::is_ancestor(&root, &head, &main).await {
+                let _ = tx.send(deliver_share(&app, &root, &agent_id, &message));
+                return;
+            }
+        }
+        task.share = Some(Share { message, head, reply: Arc::new(Mutex::new(Some(tx))) });
+        report(&app, &task, "queue", Status::Running, "Waiting to integrate (shared work)", None);
+        state.queue.lock().unwrap().push(task);
+        if !state.processing.swap(true, Ordering::SeqCst) {
+            process_queue(&app, &state).await;
+        }
+    });
+    rx
+}
+
+/// Envoie le message d'un travail partagé aux autres agents du projet.
+fn deliver_share<R: Runtime>(app: &AppHandle<R>, root: &Path, agent_id: &str, message: &str) -> ShareOutcome {
+    match team::send(app, root, agent_id, &team::Recipients::All, team::Kind::Share, message) {
+        Ok(names) => ShareOutcome::Shared(names),
+        Err(err) => ShareOutcome::Failed(err),
+    }
+}
+
+/// Après l'intégration d'un lot : chaque partage est annoncé si son travail est
+/// bien sur la branche principale, sinon l'agent apprend qu'il ne l'est pas.
+async fn settle_shares<R: Runtime>(app: &AppHandle<R>, root: &Path, batch: &[Task]) {
+    let main = git::current_branch(root).await.ok();
+    for task in batch {
+        let Some(share) = &task.share else { continue };
+        let integrated = match &main {
+            Some(main) => git::is_ancestor(root, &share.head, main).await,
+            None => false,
+        };
+        share.answer(if integrated {
+            deliver_share(app, root, &task.agent_id, &share.message)
+        } else {
+            ShareOutcome::NotIntegrated
+        });
+    }
+}
+
 /// Commit du travail de l'agent. `false` = rien à committer (déjà signalé).
-async fn commit(app: &AppHandle, task: &Task) -> AppResult<bool> {
+async fn commit<R: Runtime>(app: &AppHandle<R>, task: &Task) -> AppResult<bool> {
     report(app, task, "commit", Status::Running, "Committing changes", None);
     let changed = git::commit_all(&task.agent.cwd, &commit_message(&task.agent.name, task.summary.as_deref())).await?;
     report(app, task, "commit", Status::Done, if changed { "Committed changes" } else { "No changes to commit" }, None);
     Ok(changed)
 }
 
-async fn process_queue(app: &AppHandle, state: &WorkspaceState) {
+async fn process_queue<R: Runtime>(app: &AppHandle<R>, state: &WorkspaceState) {
     loop {
         let batch: Vec<Task> = std::mem::take(&mut *state.queue.lock().unwrap());
         if batch.is_empty() {
@@ -155,10 +263,11 @@ async fn process_queue(app: &AppHandle, state: &WorkspaceState) {
         if let Err(err) = integrate_batch(app, state, &root, batch.clone()).await {
             report_all(app, &batch, "integrate", Status::Error, "Integration stopped", Some(&err.to_string()));
         }
+        settle_shares(app, &root, &batch).await;
     }
 }
 
-async fn integrate_batch(app: &AppHandle, state: &WorkspaceState, root: &Path, batch: Vec<Task>) -> AppResult<()> {
+async fn integrate_batch<R: Runtime>(app: &AppHandle<R>, state: &WorkspaceState, root: &Path, batch: Vec<Task>) -> AppResult<()> {
     // Tout est déjà committé (l'agent du dossier projet l'est sur la branche principale).
     // Prime d'abord (puis l'ordre de création) : son travail est intégré avant celui des autres.
     let mut tasks = batch;
@@ -177,9 +286,14 @@ async fn integrate_batch(app: &AppHandle, state: &WorkspaceState, root: &Path, b
         }
     }
 
-    // Les agents inactifs repartent du code à jour (fast-forward seulement : sans risque).
+    // Les agents inactifs repartent du code à jour (fast-forward seulement : sans risque),
+    // avec le node_modules du projet s'ils en avaient un à eux (paquet installé).
     for peer in idle_isolated(state, root) {
-        let _ = git::run(&peer.cwd, &["merge", "--ff-only", &main]).await;
+        let updated = git::run(&peer.cwd, &["merge", "--ff-only", &main]).await.is_ok_and(|out| out.ok);
+        if updated {
+            let (root, dir) = (root.to_path_buf(), peer.cwd.clone());
+            let _ = tauri::async_runtime::spawn_blocking(move || deps::relink_shared(&root, &dir)).await;
+        }
     }
     Ok(())
 }
@@ -187,8 +301,8 @@ async fn integrate_batch(app: &AppHandle, state: &WorkspaceState, root: &Path, b
 /// Fusionne `tasks` dans le worktree d'intégration, build, puis avance la
 /// branche principale. `final_try` : dernier essai pour ces tâches (Claude
 /// corrige un build cassé, l'échec est signalé). Rend `true` si c'est intégré.
-async fn try_integrate(
-    app: &AppHandle,
+async fn try_integrate<R: Runtime>(
+    app: &AppHandle<R>,
     state: &WorkspaceState,
     root: &Path,
     integration: &Path,
@@ -237,6 +351,7 @@ async fn try_integrate(
         // L'agent du projet n'a rien committé entre-temps : fast-forward direct.
         if git::is_ancestor(root, main, INTEGRATION_BRANCH).await {
             report_all(app, &merged, "merge", Status::Running, &format!("Updating {main}"), None);
+            let deps_before = deps::fingerprint(root);
             let ff = git::run(root, &["merge", "--ff-only", INTEGRATION_BRANCH]).await?;
             drop(root_guard);
             if !ff.ok {
@@ -248,6 +363,11 @@ async fn try_integrate(
                 return Ok(false);
             }
             report_all(app, &merged, "merge", Status::Done, &format!("Merged into {main}"), None);
+            // Une tâche a ajouté des dépendances : le projet (et les agents qui partagent
+            // son node_modules) les reçoivent tout de suite.
+            if deps::fingerprint(root) != deps_before {
+                install_in_project(app, root, &merged).await;
+            }
             return Ok(true);
         }
         drop(root_guard);
@@ -274,8 +394,11 @@ const MAX_MAIN_RESYNCS: usize = 3;
 
 /// Build dans le worktree d'intégration. `final_try` : Claude corrige un build
 /// cassé et l'échec est signalé ; sinon un échec laisse reprendre tâche par tâche.
-async fn build_step(app: &AppHandle, root: &Path, integration: &Path, merged: &[Task], final_try: bool) -> AppResult<bool> {
+async fn build_step<R: Runtime>(app: &AppHandle<R>, root: &Path, integration: &Path, merged: &[Task], final_try: bool) -> AppResult<bool> {
     let Some(command) = build::command(root) else { return Ok(true) };
+    if !install_for_build(app, root, integration, merged).await? {
+        return Ok(false);
+    }
     let label = if merged.len() > 1 {
         format!("Building {} tasks ({command})", merged.len())
     } else {
@@ -296,6 +419,40 @@ async fn build_step(app: &AppHandle, root: &Path, integration: &Path, merged: &[
     }
     report_all(app, merged, "build", Status::Done, "Build passed", None);
     Ok(true)
+}
+
+/// Dépendances ajoutées par les tâches : installées dans le worktree d'intégration
+/// avant le build. `false` si l'installation échoue (l'erreur est signalée).
+async fn install_for_build<R: Runtime>(app: &AppHandle<R>, root: &Path, integration: &Path, merged: &[Task]) -> AppResult<bool> {
+    let Some(command) = deps::integration_needs_install(root, integration) else { return Ok(true) };
+    report_all(app, merged, "deps", Status::Running, &format!("Installing dependencies ({command})"), None);
+    let (ok, output) = deps::install(integration, &command).await?;
+    if !ok {
+        report_all(app, merged, "deps", Status::Error, "Could not install dependencies", Some(&output));
+        return Ok(false);
+    }
+    deps::integration_installed(root, integration);
+    report_all(app, merged, "deps", Status::Done, "Installed dependencies", None);
+    Ok(true)
+}
+
+/// Installation dans le dossier du projet après l'arrivée de nouvelles dépendances.
+/// Un échec est signalé sans annuler l'intégration (le code, lui, est validé).
+async fn install_in_project<R: Runtime>(app: &AppHandle<R>, root: &Path, merged: &[Task]) {
+    let command = deps::install_command(root);
+    report_all(app, merged, "deps", Status::Running, &format!("Installing dependencies in the project ({command})"), None);
+    match deps::install(root, &command).await {
+        Ok((true, _)) => report_all(app, merged, "deps", Status::Done, "Installed dependencies in the project", None),
+        Ok((false, output)) => report_all(
+            app,
+            merged,
+            "deps",
+            Status::Error,
+            "Could not install dependencies in the project",
+            Some(&format!("{output}\n\nRun `{command}` in the project folder.")),
+        ),
+        Err(err) => report_all(app, merged, "deps", Status::Error, "Could not install dependencies in the project", Some(&err.to_string())),
+    }
 }
 
 fn commit_message(agent: &str, summary: Option<&str>) -> String {

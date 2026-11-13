@@ -721,14 +721,18 @@ pub fn agent_instructions<R: Runtime>(app: &AppHandle<R>) -> String {
          call stop_preview as soon as you are done with it. Pass user_requested=true only when the user explicitly asked for a preview.\n\
          Never run these through the shell (`npm run dev`, `next dev`, `vite`, `tsc`, `eslint`, `vitest`, `jest`, `playwright test`, \
          `npm run build`, `next build`, `cargo test`…): such commands are refused. If a tool reports that you are queued, \
-         do something else and call it again later."
+         do something else and call it again later.\n\
+         You may work alongside other FAST agents on this project, each in its own git worktree. When you produce something they must \
+         use (a design system, shared components, an API, types), call share_work with a short guide: FAST merges it into the main \
+         branch and sends your guide to everyone. Use send_message for a decision or a warning. Messages from teammates reach you at \
+         the start of a task: follow them."
     )
 }
 
 // --- Commandes de shell des agents ------------------------------------------
 
 /// Outils du serveur MCP de FAST (noms nus, sans préfixe de serveur).
-const TOOLS: &[&str] = &["run_check", "start_preview", "stop_preview", "preview_logs", "scheduler_status"];
+const TOOLS: &[&str] = &["run_check", "start_preview", "stop_preview", "preview_logs", "scheduler_status", "send_message", "share_work"];
 
 /// Demande d'autorisation d'un agent : un outil de FAST est autorisé d'office, une
 /// opération planifiée lancée dans le shell est refusée avec la marche à suivre.
@@ -865,8 +869,24 @@ pub fn debug_probe<R: Runtime>(app: AppHandle<R>) {
         let _ = window.hide();
     }
     tauri::async_runtime::spawn(async move {
+        // `FAST_PROBE_TEAM` : deux agents (Prime, Nova) avec leurs worktrees ; l'adresse
+        // MCP est celle de Prime, et les messages d'équipe et étapes s'affichent.
+        let mut cwd = PathBuf::from(&dir);
+        if std::env::var_os("FAST_PROBE_TEAM").is_some() {
+            use tauri::Listener;
+            let workspaces = app.state::<crate::workspace::WorkspaceState>();
+            for (index, name) in [(0, "Prime"), (1, "Nova")] {
+                match crate::workspace::create_agent(&workspaces, PathBuf::from(&dir), format!("probe-{name}"), index, name.into()).await {
+                    Ok(_) if index == 0 => cwd = PathBuf::from(&dir).join(".fast").join("worktrees").join("agent-1"),
+                    Ok(_) => {}
+                    Err(err) => println!("AGENT {name} failed: {err}"),
+                }
+            }
+            app.listen_any(crate::team::EVENT, |event| println!("TEAM {}", event.payload()));
+            app.listen_any(crate::workspace::orchestrator::EVENT, |event| println!("STEP {}", event.payload()));
+        }
         let url = loop {
-            if let Some(url) = register(&app, "probe-session", Path::new(&dir)) {
+            if let Some(url) = register(&app, "probe-session", &cwd) {
                 break url;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;

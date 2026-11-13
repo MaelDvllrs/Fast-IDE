@@ -16,6 +16,14 @@ use tokio::{
 };
 
 use super::{agent_for, commands, preview_logs, run_check, start_preview, status_text, stop_preview, Agent, Kind, SchedulerState};
+use crate::{
+    team,
+    workspace::{
+        self,
+        orchestrator::{self, ShareOutcome},
+        WorkspaceState,
+    },
+};
 
 /// Corps de requête accepté au plus.
 const MAX_BODY: usize = 4 * 1024 * 1024;
@@ -205,12 +213,76 @@ fn tools() -> Value {
             "inputSchema": { "type": "object", "properties": {} }
         },
         {
+            "name": "send_message",
+            "title": "Message teammates",
+            "description": "Send a message to the other FAST agents working on this project (they work in parallel, each in its own git worktree). \
+                Use it to tell them something they need: a decision, an API you changed, a convention to follow. \
+                They read it with their next task; they are never interrupted. For code they must use, prefer share_work.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "to": { "type": "string", "description": "A teammate's name (e.g. \"Nova\"), several separated by commas, or \"all\"" },
+                    "message": { "type": "string", "description": "What they need to know: precise, self-contained" }
+                },
+                "required": ["to", "message"]
+            }
+        },
+        {
+            "name": "share_work",
+            "title": "Share your work with the team",
+            "description": "Publish your current work to the other agents: FAST commits it, merges it into the main branch (after a build), \
+                then sends your message to every teammate, whose folder gets the new code. Use it when you produced something the others \
+                must use (a design system, shared components, an API, types) before finishing your task. Waits for the integration \
+                and tells you if it failed (merge conflict, broken build).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message": { "type": "string", "description": "For your teammates: what you share, where it is and how to use it" }
+                },
+                "required": ["message"]
+            }
+        },
+        {
             "name": "scheduler_status",
             "title": "Scheduler status",
             "description": "What is running and queued in this project (checks, builds, servers) and the limits.",
             "inputSchema": { "type": "object", "properties": {} }
         }
     ])
+}
+
+/// Outils d'équipe : l'agent qui appelle est retrouvé d'après son dossier de travail.
+async fn team_call<R: Runtime>(app: &AppHandle<R>, agent: &Agent, name: &str, args: &Value) -> Result<String, String> {
+    let message = args["message"].as_str().map(str::trim).filter(|m| !m.is_empty()).ok_or("`message` is required")?;
+    let state = app.state::<WorkspaceState>();
+    let (id, _) = workspace::agent_by_cwd(&state, &agent.cwd).ok_or("you are not one of this project's agents")?;
+    if name == "send_message" {
+        let to = team::Recipients::parse(args["to"].as_str().unwrap_or("all"));
+        let names = team::send(app, &agent.root, &id, &to, team::Kind::Message, message)?;
+        return Ok(if names.is_empty() {
+            "No teammate to send to: you are the only agent of this project.".into()
+        } else {
+            format!("Sent to {}. They will read it with their next task.", names.join(", "))
+        });
+    }
+    let reply = orchestrator::share_work(app.clone(), id, message.to_owned());
+    match tokio::time::timeout(super::TOOL_TIMEOUT, reply).await {
+        Ok(Ok(ShareOutcome::Shared(names))) if names.is_empty() => {
+            Ok("Your work is on the main branch. No teammate to notify: you are the only agent.".into())
+        }
+        Ok(Ok(ShareOutcome::Shared(names))) => Ok(format!(
+            "Your work is on the main branch and your message was sent to {}. Their folders get the new code before they read it.",
+            names.join(", ")
+        )),
+        Ok(Ok(ShareOutcome::NotIntegrated)) => Err(
+            "Your work could not be merged into the main branch (see the integration steps in your conversation: merge conflict or broken build). \
+             Nothing was sent. Fix the problem, then call share_work again."
+                .into(),
+        ),
+        Ok(Ok(ShareOutcome::Failed(err))) => Err(err),
+        Ok(Err(_)) => Err("the integration stopped before finishing".into()),
+        Err(_) => Err("the integration is taking too long; your message will not be sent".into()),
+    }
 }
 
 fn text(text: impl Into<String>, is_error: bool) -> Value {
@@ -238,6 +310,7 @@ async fn call<R: Runtime>(app: &AppHandle<R>, agent: &Agent, name: &str, args: &
         "stop_preview" => Ok(stop_preview(app, &agent.session).await),
         "preview_logs" => Ok(preview_logs(app, &agent.session, args["max_chars"].as_u64().unwrap_or(8000).min(50_000) as usize)),
         "scheduler_status" => Ok(status_text(app, agent)),
+        "send_message" | "share_work" => team_call(app, agent, name, args).await,
         _ => Err(format!("unknown tool `{name}`")),
     };
     match outcome {

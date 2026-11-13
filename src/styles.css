@@ -4,7 +4,10 @@
   font-family: var(--font-ui);
   font-size: 13px;
   color: var(--text);
-  background: var(--bg-app);
+  /* Lueur très légère de la couleur primaire, depuis le coin haut gauche */
+  background:
+    radial-gradient(ellipse 70% 60% at 0% 0%, var(--glow), transparent 70%),
+    var(--bg-app);
 }
 
 /* Hauteur de la barre de titre dessinée par l'app (voir TitleBar.tsx). */
@@ -322,7 +325,7 @@ button {
 .claude-panel {
   flex: 0 1 380px;
   min-width: 280px;
-  background: var(--bg-explorer);
+  background: radial-gradient(ellipse 120% 40% at 100% 0%, var(--glow), transparent 75%), var(--bg-explorer);
 }
 
 /* Poignée de redimensionnement : occupe exactement l'espace entre deux fenêtres */
@@ -4917,12 +4920,14 @@ li:last-child > .scm-commit-row::before {
 /* Cartes du fil (autorisation, commit) : décalées comme le texte des messages,
    le point et le trait du fil restent dehors, dans la marge, au lieu de passer sous la carte. */
 .permission-card.tl,
-.commit-card.tl {
+.commit-card.tl,
+.team-card.tl {
   margin-left: 20px;
 }
 
 .permission-card.tl::before,
-.commit-card.tl::before {
+.commit-card.tl::before,
+.team-card.tl::before {
   /* Aligné sur le titre de la carte (bordure + marge intérieure du haut) */
   top: calc(var(--card-pad-top, 13px) + 0.75em - 3.5px);
   left: -20px;
@@ -4933,7 +4938,8 @@ li:last-child > .scm-commit-row::before {
 }
 
 .permission-card.tl:has(+ .tl)::after,
-.commit-card.tl:has(+ .tl)::after {
+.commit-card.tl:has(+ .tl)::after,
+.team-card.tl:has(+ .tl)::after {
   top: calc(var(--card-pad-top, 13px) + 0.75em + 6px);
   left: -17px;
 }
@@ -5413,4 +5419,42 @@ li:last-child > .scm-commit-row::before {
 
 .skills-confirm.danger {
   color: var(--error);
+}
+
+/* Message d'un coéquipier (autre agent) dans la conversation */
+.team-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--border));
+  border-radius: 10px;
+  background: var(--bg-window);
+}
+
+.team-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.team-card-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-dim);
+}
+
+.team-card-status {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+}
+
+.team-card-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
 }

@@ -38,7 +38,7 @@ pub async fn workspace_pick_files(app: AppHandle, start_dir: Option<String>) -> 
         .collect())
 }
 
-/// Prépare l'espace de travail d'un agent (worktree isolé à partir du 2e agent).
+/// Prépare l'espace de travail d'un agent (worktree isolé, pour chaque agent).
 #[tauri::command]
 pub async fn agent_workspace_create(
     state: tauri::State<'_, crate::workspace::WorkspaceState>,
@@ -59,6 +59,13 @@ pub async fn agent_workspace_remove(state: tauri::State<'_, crate::workspace::Wo
 #[tauri::command]
 pub fn agent_set_busy(state: tauri::State<'_, crate::workspace::WorkspaceState>, agent_id: String, busy: bool) {
     crate::workspace::set_busy(&state, &agent_id, busy);
+}
+
+/// Avant de transmettre les messages de ses coéquipiers à un agent : son worktree
+/// est remis sur la branche principale (fast-forward). `false` s'il n'a pas pu l'être.
+#[tauri::command]
+pub async fn agent_team_sync(state: tauri::State<'_, crate::workspace::WorkspaceState>, agent_id: String) -> AppResult<bool> {
+    crate::workspace::sync_with_main(&state, &agent_id).await
 }
 
 /// Fin d'une tâche d'agent : l'orchestrateur prend le relais en arrière-plan.

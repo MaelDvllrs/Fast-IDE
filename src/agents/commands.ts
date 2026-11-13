@@ -79,6 +79,31 @@ Check and fix it:
 Finish with a short summary: what was missing, what you changed, and the build result.`,
   },
   {
+    name: "share",
+    description: "Share your current work with the other agents (merged into the main branch, then announced)",
+    hint: "what to highlight",
+    readOnly: false,
+    prompt: (args) =>
+      `Share your current work with the other FAST agents now: call the \`share_work\` tool of the \`fast\` MCP server.
+Before calling it, make sure the work is usable by others (it compiles, nothing half-done in the shared files).
+Your message is their guide: say what you share, where it is (files, exports) and how to use it, in a few precise lines.
+If share_work reports a merge conflict or a broken build, fix it and call share_work again.${focus(args)}`,
+  },
+  {
+    name: "tell",
+    description: "Send a message to other agents: /tell Nova …, /tell all …",
+    hint: "agent (or all), then the message",
+    readOnly: true,
+    prompt: (args) => {
+      // Premier mot : le ou les destinataires (« Nova », « Nova,Atlas », « all »).
+      const [to = "all", ...rest] = args.split(/\s+/);
+      const message = rest.join(" ").trim();
+      return `Send a message to your teammate${to.toLowerCase() === "all" ? "s (to: \"all\")" : ` ${to} (to: "${to}")`} with the \`send_message\` tool of the \`fast\` MCP server.
+${message ? `What they need to know: ${message}` : "Tell them what they need to know about your current work."}
+Rewrite it as a precise, self-contained message and add the context only you have (files, names, decisions). ${READ_ONLY} Then confirm in one line what you sent.`;
+    },
+  },
+  {
     name: "commit",
     description: "Prepare a commit message from the current changes",
     hint: "notes for the message",

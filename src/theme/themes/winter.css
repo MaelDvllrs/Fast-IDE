@@ -1,0 +1,92 @@
+/* Thème « Winter » : interface blanche et givrée, accent bleu ciel, avec une
+   lueur bleutée plus marquée que celle des autres thèmes. Thème clair : il
+   redéfinit aussi les logos des IA et la palette du terminal. */
+:root[data-theme="winter"] {
+  color-scheme: light;
+
+  /* Fonds : blancs légèrement bleutés */
+  --bg-app: #e8eef4; /* fond général, derrière les fenêtres */
+  --bg-window: #f7f9fc;
+  --bg-explorer: #f5f8fc;
+  --bg-composer: var(--bg-editor);
+  --bg-terminal: #ffffff;
+  --bg-editor: #ffffff;
+  --bg-editor-header: #f7f9fc;
+  --border-window: #dde6ef;
+  --border-line: #e6edf4;
+  --bg-elevated: #ffffff;
+  --bg-hover: #edf3f9;
+  --bg-active: #dfeaf5;
+  --selection: #3a9fe633;
+
+  --border: #e6edf4;
+  --border-strong: #cdd9e5;
+
+  /* Texte : gris bleuté, titres presque noirs */
+  --text: #3b4654;
+  --text-strong: #141b24;
+  --text-dim: #6b7787;
+  --text-label: #9aa6b4;
+  --text-tree: #5f6b7a;
+  --text-explorer: var(--text-dim);
+  --text-agent: var(--text);
+  --timeline: var(--border-strong);
+  --timeline-dot: var(--text-label);
+
+  /* Couleur primaire : bleu ciel */
+  --primary: #3a9fe6;
+  --primary-soft: color-mix(in srgb, var(--primary) 12%, transparent);
+  --on-primary: #ffffff;
+  /* Lueur du fond plus présente que sur les thèmes sombres */
+  --glow: color-mix(in srgb, var(--primary) 16%, transparent);
+
+  /* Couleurs fonctionnelles (assez foncées pour un fond clair) */
+  --error: #d64545;
+  --git-added: #22863a;
+  --git-modified: #b07d00;
+  --git-deleted: #d64545;
+  --git-renamed: #1f7fd0;
+  --git-conflict: #d64545;
+  --logo: #141b24;
+  --logo-frame: transparent;
+
+  /* Code (éditeur) */
+  --line-number: #c3cdd8;
+  --syntax-text: #24303d;
+  --syntax-keyword: #7c4dd6;
+  --syntax-name: #24303d;
+  --syntax-property: #1f7fd0;
+  --syntax-function: #0b7fa8;
+  --syntax-constant: #c2570c;
+  --syntax-definition: #0b7fa8;
+  --syntax-type: #0f8a7e;
+  --syntax-number: #c2570c;
+  --syntax-operator: #5d6b7c;
+  --syntax-special: #d97706;
+  --syntax-comment: #9aa6b4;
+  --syntax-comment-style: italic;
+  --syntax-string: #2f8a4c;
+  --syntax-heading: #1f7fd0;
+  --syntax-tag: #1f7fd0;
+  --syntax-attribute: #7c4dd6;
+  --syntax-attribute-style: normal;
+  --syntax-invalid: #d64545;
+
+  /* Terminal : palette lisible sur fond blanc */
+  --ansi-black: #2b3542;
+  --ansi-red: #d64545;
+  --ansi-green: #2f8a4c;
+  --ansi-yellow: #b07d00;
+  --ansi-blue: #1f7fd0;
+  --ansi-magenta: #7c4dd6;
+  --ansi-cyan: #0b8fa8;
+  --ansi-white: #7a8696;
+  --ansi-bright-black: #9aa6b4;
+  --ansi-bright-red: #e06666;
+  --ansi-bright-green: #45a865;
+  --ansi-bright-yellow: #d39b1a;
+  --ansi-bright-blue: #3a9fe6;
+  --ansi-bright-magenta: #9a6fe6;
+  --ansi-bright-cyan: #26b1c9;
+  --ansi-bright-white: #3b4654;
+}

@@ -1,13 +1,13 @@
 //! Espaces de travail des agents.
 //!
-//! L'agent 1 travaille dans le dossier du projet, sur la branche principale.
-//! Chaque agent suivant reçoit un worktree git isolé, `.fast/worktrees/agent-N`,
-//! sur sa branche `fast/agent-N` : ses fichiers et ses commandes ne gênent pas
-//! les autres. À chaque fin de tâche, l'orchestrateur ramène son travail sur la
+//! Chaque agent, Prime compris, reçoit un worktree git isolé,
+//! `.fast/worktrees/agent-N`, sur sa branche `fast/agent-N` : ses fichiers et ses
+//! commandes ne gênent pas les autres (sans git, tous partagent le dossier du projet). À chaque fin de tâche, l'orchestrateur ramène son travail sur la
 //! branche principale via le worktree d'intégration `.fast/integration`, le seul
 //! où l'on build : son cache reste chaud (voir `orchestrator.rs`).
 
 pub mod build;
+pub mod deps;
 pub mod run;
 pub mod git;
 pub mod orchestrator;
@@ -108,7 +108,7 @@ pub(crate) async fn ensure_integration(root: &Path) -> AppResult<PathBuf> {
     Ok(dir)
 }
 
-/// Prépare l'espace de travail d'un agent. `index` 0 = premier agent (le projet).
+/// Prépare l'espace de travail d'un agent (worktree). `index` 0 = Prime, l'agent principal.
 pub async fn create_agent(state: &WorkspaceState, root: PathBuf, id: String, index: u32, name: String) -> AppResult<AgentWorkspace> {
     let register = |cwd: PathBuf, branch: Option<String>| {
         state.agents.lock().unwrap().insert(
@@ -185,6 +185,41 @@ pub(crate) fn busy_root_agent(state: &WorkspaceState, root: &Path) -> Option<Str
         .values()
         .find(|e| e.root == root && e.branch.is_none() && (e.busy || e.committing))
         .map(|e| e.name.clone())
+}
+
+/// Agents du projet `root` (identifiant, entrée).
+pub(crate) fn agents_in(state: &WorkspaceState, root: &Path) -> Vec<(String, AgentEntry)> {
+    state.agents.lock().unwrap().iter().filter(|(_, e)| e.root == root).map(|(id, e)| (id.clone(), e.clone())).collect()
+}
+
+/// Même dossier, quelle que soit l'écriture (séparateurs, casse sous Windows).
+fn same_path(a: &Path, b: &Path) -> bool {
+    let norm = |p: &Path| {
+        let text = p.to_string_lossy().replace('\\', "/").trim_end_matches('/').to_owned();
+        if cfg!(windows) { text.to_lowercase() } else { text }
+    };
+    norm(a) == norm(b)
+}
+
+/// Agent qui travaille dans `cwd` (identifiant, entrée).
+pub(crate) fn agent_by_cwd(state: &WorkspaceState, cwd: &Path) -> Option<(String, AgentEntry)> {
+    state.agents.lock().unwrap().iter().find(|(_, e)| same_path(&e.cwd, cwd)).map(|(id, e)| (id.clone(), e.clone()))
+}
+
+/// Worktree de l'agent remis sur la branche principale (fast-forward seulement :
+/// sans risque pour son travail). Rend `true` s'il est à jour.
+pub async fn sync_with_main(state: &WorkspaceState, id: &str) -> AppResult<bool> {
+    let Some(agent) = entry(state, id) else { return Ok(false) };
+    if agent.branch.is_none() {
+        return Ok(true);
+    }
+    let main = git::current_branch(&agent.root).await?;
+    let ok = git::run(&agent.cwd, &["merge", "--ff-only", &main]).await?.ok;
+    if ok {
+        let (root, dir) = (agent.root.clone(), agent.cwd.clone());
+        let _ = tauri::async_runtime::spawn_blocking(move || deps::relink_shared(&root, &dir)).await;
+    }
+    Ok(ok)
 }
 
 /// Agents isolés et inactifs du projet : ceux qu'on peut mettre à jour sans risque.

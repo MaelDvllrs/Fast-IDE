@@ -108,7 +108,7 @@ const CHECK_ALIASES: Record<string, string> = {
  * « mcp__fast__run_check » (Claude Code, Codex) ou « run_check (fast MCP Server) » (Gemini).
  */
 function describeFastTool(name: string, i: Record<string, unknown>): ToolDescription | null {
-  const tool = /^mcp__fast__(\w+)$/.exec(name)?.[1] ?? /^(run_check|start_preview|stop_preview|preview_logs|scheduler_status)\b/.exec(name)?.[1];
+  const tool = /^mcp__fast__(\w+)$/.exec(name)?.[1] ?? /^(run_check|start_preview|stop_preview|preview_logs|scheduler_status|send_message|share_work)\b/.exec(name)?.[1];
   switch (tool) {
     case "run_check": {
       // « type_check », « unit-tests »… : même nom que le planificateur une fois normalisé.
@@ -124,6 +124,12 @@ function describeFastTool(name: string, i: Record<string, unknown>): ToolDescrip
       return { icon: "lucide:server", running: "Reading the preview output", done: "Read the preview output" };
     case "scheduler_status":
       return { icon: "lucide:server", running: "Checking running tasks", done: "Checked running tasks" };
+    case "send_message": {
+      const to = typeof i.to === "string" && i.to.toLowerCase() !== "all" ? i.to : "the team";
+      return { icon: "lucide:bot", running: `Messaging ${to}`, done: `Messaged ${to}` };
+    }
+    case "share_work":
+      return { icon: "lucide:git-merge", running: "Sharing work with the team", done: "Shared work with the team" };
     default:
       return null;
   }

@@ -216,6 +216,17 @@ export interface OrchestratorEvent {
   detail: string | null;
 }
 
+/** Message d'un agent à un autre (`send_message`), ou travail partagé déjà sur la branche principale (`share_work`). */
+export interface TeamMessage {
+  id: string;
+  toAgentId: string;
+  fromAgentId: string;
+  fromName: string;
+  kind: "message" | "share";
+  text: string;
+  at: number;
+}
+
 export const agents = {
   /** Worktree `.fast/worktrees/agent-N` ; `index` 0 = Prime, prioritaire à l'intégration. */
   createWorkspace: (root: string, agentId: string, index: number, name: string) =>
@@ -226,6 +237,11 @@ export const agents = {
   taskFinished: (agentId: string, summary: string | null) => invoke<void>("agent_task_finished", { agentId, summary }),
   onOrchestratorEvent: (handler: (e: OrchestratorEvent) => void): Promise<UnlistenFn> =>
     listen<OrchestratorEvent>("orchestrator://event", (e) => handler(e.payload)),
+  /** Messages des agents entre eux. */
+  onTeamMessage: (handler: (m: TeamMessage) => void): Promise<UnlistenFn> =>
+    listen<TeamMessage>("team://message", (e) => handler(e.payload)),
+  /** Worktree remis sur la branche principale avant de transmettre des messages ; `false` s'il n'a pas pu l'être. */
+  teamSync: (agentId: string) => invoke<boolean>("agent_team_sync", { agentId }),
 };
 
 /** Réglages propres au projet (`.fast/config.json`). */

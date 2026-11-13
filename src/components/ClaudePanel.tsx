@@ -67,10 +67,10 @@ interface Props {
 }
 
 /** En-tête avant l'ouverture des agents (installation, connexion). */
-function ClaudeHeader({ busy }: { busy: boolean }) {
+function ClaudeHeader({ busy, title = "Claude Code" }: { busy: boolean; title?: string }) {
   return (
     <header className="panel-header">
-      <span className="panel-title">Claude Code</span>
+      <span className="panel-title">{title}</span>
       {busy && <span className="spinner">●</span>}
     </header>
   );
@@ -525,7 +525,7 @@ export function ClaudePanel({ cwd, activeFile, width, expanded }: Props) {
       {ready ? (
         saved === undefined ? (
           <>
-            <ClaudeHeader busy />
+            <ClaudeHeader busy title="Loading" />
             <div className="claude-setup">
               <p className="claude-setup-text">Restoring agents…</p>
             </div>
@@ -535,10 +535,11 @@ export function ClaudePanel({ cwd, activeFile, width, expanded }: Props) {
         )
       ) : (
         <>
-          <ClaudeHeader busy={!status || waiting} />
+          {/* Pendant la vérification, rien ne dit encore quelle IA s'affichera : « Loading » */}
+          <ClaudeHeader busy={!status || waiting} title={status ? "Claude Code" : "Loading"} />
           <div className="claude-setup">
             {!status ? (
-              <p className="claude-setup-text">Checking Claude Code…</p>
+              <p className="claude-setup-text">Loading…</p>
             ) : !status.installed ? (
               <>
                 <h3>Install Claude Code</h3>
@@ -654,6 +655,8 @@ type Item =
   | { kind: "tool"; id: string; name: string; input?: Record<string, unknown>; status: "running" | "done" | "error" }
   | { kind: "step"; id: string; stage: string; label: string; status: OrchestratorStatus; detail: string | null }
   | { kind: "commit"; id: string; message: string }
+  /** Message d'un coéquipier : transmis à l'agent avec la prochaine demande. */
+  | { kind: "team"; id: string; from: string; fromAgentId: string; text: string; share: boolean; delivered: boolean }
   | {
       kind: "permission";
       /** `request_id` de Claude Code, à renvoyer avec la réponse. */
@@ -748,7 +751,7 @@ function ClaudeSession({ agentId, index, providerId, saved, color, branch, isola
 
   // Chaque message texte reçoit l'heure système au moment où il s'affiche.
   const push = (...l: Item[]) =>
-    setItems((prev) => [...prev, ...l.map((item) => ("text" in item && !item.at ? { ...item, at: Date.now() } : item))]);
+    setItems((prev) => [...prev, ...l.map((item) => ("text" in item && item.kind !== "team" && !item.at ? { ...item, at: Date.now() } : item))]);
 
   // L'agent « travaille » tant que Claude répond ou que l'orchestrateur traite
   // sa tâche (commit, build, merge) ; la fonction reçue change à chaque rendu.
@@ -791,6 +794,26 @@ function ClaudeSession({ agentId, index, providerId, saved, color, branch, isola
           ? prev.map((item) => (item.kind === "step" && item.id === id ? step : item))
           : [...prev, step],
       );
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [agentId]);
+
+  // Messages des autres agents : affichés tout de suite, transmis avec la prochaine demande.
+  useEffect(() => {
+    const unlisten = agentsApi.onTeamMessage((message) => {
+      if (message.toAgentId !== agentId) return;
+      const item: Item = {
+        kind: "team",
+        id: message.id,
+        from: message.fromName,
+        fromAgentId: message.fromAgentId,
+        text: message.text,
+        share: message.kind === "share",
+        delivered: false,
+      };
+      setItems((prev) => (prev.some((x) => x.kind === "team" && x.id === message.id) ? prev : [...prev, item]));
     });
     return () => {
       unlisten.then((fn) => fn());
@@ -1111,8 +1134,21 @@ Agent: ${reply.slice(0, 1500)}`;
       kind: "user",
       text: attachments.length ? `${text}\nContext: ${attachments.map((a) => a.name).join(", ")}` : text,
     });
+    // Messages des coéquipiers en attente : le worktree récupère d'abord leur code
+    // (branche principale), puis ils passent en tête de la demande.
+    const inbox = items.filter((x): x is Extract<Item, { kind: "team" }> => x.kind === "team" && !x.delivered);
+    let teamNote = "";
+    if (inbox.length > 0) {
+      const synced = await agentsApi.teamSync(agentId).catch(() => false);
+      teamNote = teamPreamble(inbox, synced);
+      const delivered = new Set(inbox.map((x) => x.id));
+      updateItems(
+        (x) => x.kind === "team" && delivered.has(x.id),
+        (x) => (x.kind === "team" ? { ...x, delivered: true } : x),
+      );
+    }
     try {
-      await claude.send(sessionId, ai.formatPrompt(prompt, attachments));
+      await claude.send(sessionId, teamNote + ai.formatPrompt(prompt, attachments));
     } catch (err) {
       setBusy(false);
       push({ kind: "error", text: String(err) });
@@ -1170,6 +1206,8 @@ Agent: ${reply.slice(0, 1500)}`;
                 }
               }}
             />
+          ) : item.kind === "team" ? (
+            <TeamCard key={item.id} item={item} />
           ) : item.kind === "commit" ? (
             <CommitCard key={item.id} cwd={cwd} message={item.message} canPush={!isolated} />
           ) : (
@@ -1287,6 +1325,7 @@ const STEP_ICONS: Record<string, string> = {
   integrate: "lucide:git-merge",
   sync: "lucide:refresh-cw",
   build: "lucide:hammer",
+  deps: "lucide:download",
   merge: "lucide:git-merge",
 };
 
@@ -1329,6 +1368,38 @@ function StepRow({
     );
   }
   return <div className={`activity ${status} tl`}>{row}</div>;
+}
+
+/**
+ * Messages des coéquipiers, placés en tête de la demande suivante. `synced` :
+ * le worktree a bien reçu la branche principale (le code partagé y est).
+ */
+function teamPreamble(inbox: Extract<Item, { kind: "team" }>[], synced: boolean): string {
+  const lines = inbox.map((m) =>
+    m.share
+      ? `- ${m.from} shared work (now on the main branch${synced ? ", and in your folder" : ""}): ${m.text}`
+      : `- ${m.from}: ${m.text}`,
+  );
+  const sync = inbox.some((m) => m.share) && !synced
+    ? "\nYour folder could not be updated automatically (you have work not yet merged): merge the main branch before using the shared work."
+    : "";
+  return `[Messages from your teammates, other FAST agents on this project]\n${lines.join("\n")}${sync}\n\n[Your task]\n`;
+}
+
+/** Message d'un coéquipier dans la conversation ; « Will be read… » tant qu'il n'est pas transmis. */
+function TeamCard({ item }: { item: Extract<Item, { kind: "team" }> }) {
+  const roster = useAgentRoster();
+  const sender = roster.find((a) => a.id === item.fromAgentId);
+  return (
+    <div className="team-card tl">
+      <div className="team-card-title">
+        {sender ? <AgentMascot color={sender.color} working={false} size={16} /> : <UiIcon name="lucide:bot" className="team-card-icon" />}
+        <span>{item.share ? `${item.from} shared work` : `Message from ${item.from}`}</span>
+        <span className="team-card-status">{item.delivered ? "Delivered" : "Will be read with your next message"}</span>
+      </div>
+      <div className="team-card-text">{item.text}</div>
+    </div>
+  );
 }
 
 /** Présentation d'un agent dans sa conversation vide : mascotte + message. */

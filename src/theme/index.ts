@@ -7,6 +7,7 @@ import "./themes/shades-of-purple.css";
 import "./themes/tokyo-night.css";
 import "./themes/min-dark.css";
 import "./themes/min-light.css";
+import "./themes/winter.css";
 
 export interface Theme {
   id: string;
@@ -40,6 +41,16 @@ export const THEMES: Theme[] = [
     id: "min-light",
     label: "Min Light",
     preview: { app: "#ececec", window: "#f6f6f6", editor: "#ffffff", primary: "#212121" },
+  },
+  {
+    id: "winter",
+    label: "Winter",
+    preview: {
+      app: "radial-gradient(circle at 0% 0%, #cfe6f8, #e8eef4 70%)",
+      window: "#f5f8fc",
+      editor: "#ffffff",
+      primary: "#3a9fe6",
+    },
   },
 ];
 

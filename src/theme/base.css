@@ -16,6 +16,10 @@
   --git-renamed: #6cb6ff;
   --git-conflict: #e4676b;
 
+  /* Lueur très légère de la couleur primaire sur le fond de l'app et des
+     fenêtres latérales (un thème peut la renforcer) */
+  --glow: color-mix(in srgb, var(--primary) 7%, transparent);
+
   /* Logos monochromes des IA (Claude, OpenAI, Gemini) : blancs sur fond sombre */
   --logo: #fff;
 
